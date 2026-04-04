@@ -1,0 +1,121 @@
+// Code Chroma — MVP: modelo relacional para séries temporais e ingestão diária
+// https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// Usuário autenticado via Supabase Auth (`sub` do JWT = este id)
+model User {
+  id        String   @id @db.Uuid
+  email     String   @unique
+  createdAt DateTime @default(now())
+
+  wallet Wallet?
+
+  @@map("users")
+}
+
+/// Carteira 1:1 com o usuário
+model Wallet {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @unique @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  walletAssets WalletAsset[]
+
+  @@map("wallets")
+}
+
+/// Posição na carteira (nome livre; `assetId` opcional = vínculo ao catálogo)
+model WalletAsset {
+  id             String   @id @default(cuid())
+  walletId       String   @db.Uuid
+  assetId        String?
+  nome           String
+  setor          String
+  valorInvestido Decimal  @db.Decimal(20, 2)
+  quantidade     Decimal  @db.Decimal(24, 8)
+  createdAt      DateTime @default(now())
+
+  wallet Wallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  asset  Asset? @relation(fields: [assetId], references: [id], onDelete: SetNull)
+
+  @@index([walletId])
+  @@map("wallet_assets")
+}
+
+/// Ativos monitorados (ações tech, commodities, energia, etc.)
+model Asset {
+  id        String   @id @default(cuid())
+  symbol    String   @unique
+  name      String
+  /// Agrupamento para o motor de correlação (ex.: Tech, Commodities, Index).
+  category  String   @default("Other")
+  type      AssetType
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  priceHistory AssetPriceHistory[]
+  walletAssets WalletAsset[]
+
+  @@map("assets")
+}
+
+enum AssetType {
+  STOCK
+  COMMODITY
+  ENERGY
+  INDEX
+  OTHER
+}
+
+/// Série temporal: fechamento diário por ativo (ingestão Alpha Vantage / outras fontes)
+model AssetPriceHistory {
+  id        String   @id @default(cuid())
+  assetId   String
+  date      DateTime @db.Date
+  close     Decimal  @db.Decimal(20, 8)
+  createdAt DateTime @default(now())
+
+  asset Asset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@unique([assetId, date])
+  @@index([assetId, date(sort: Desc)])
+  @@map("asset_price_history")
+}
+
+/// Observações macroeconômicas (FRED e similares): uma linha por série + data
+model MacroIndicator {
+  id        String   @id @default(cuid())
+  seriesId  String
+  name      String
+  date      DateTime @db.Date
+  value     Decimal  @db.Decimal(24, 8)
+  createdAt DateTime @default(now())
+
+  @@unique([seriesId, date])
+  @@index([seriesId, date(sort: Desc)])
+  @@map("macro_indicators")
+}
+
+/// Notícias ingeridas (ex.: NewsAPI) — top do dia para contexto de risco
+model NewsRecord {
+  id          String   @id @default(cuid())
+  title       String
+  source      String
+  publishedAt DateTime
+  url         String?
+  description String?  @db.Text
+  createdAt   DateTime @default(now())
+
+  @@index([publishedAt(sort: Desc)])
+  @@map("news_records")
+}
