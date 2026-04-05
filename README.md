@@ -64,6 +64,11 @@ API REST em **Node.js + TypeScript + Express** para o MVP da Code Chroma: ingest
 | `npm run db:push` | `prisma db push` (sem histórico de migração) |
 | `npm run db:studio` | Prisma Studio |
 | `npm run ingest:once` | Executa o job de ingestão uma vez |
+| `npm run ingest-data` | Alias de `ingest:once` (útil em CI / documentação) |
+| `npm run test` | [Vitest](https://vitest.dev/) — testes unitários (uma execução) |
+| `npm run test:watch` | Vitest em modo watch |
+| `npm run lint` | ESLint (TypeScript) |
+| `npm run lint:fix` | ESLint com correções automáticas |
 
 ---
 
@@ -72,6 +77,8 @@ API REST em **Node.js + TypeScript + Express** para o MVP da Code Chroma: ingest
 | Variável | Obrigatória | Descrição |
 |----------|-------------|-----------|
 | `DATABASE_URL` | Sim | URL PostgreSQL (Prisma) |
+| `SUPABASE_URL` | Sim | URL do projeto Supabase (validação de JWT no backend) |
+| `SUPABASE_ANON_KEY` | Sim | Chave anon/public do Supabase (`auth.getUser`) |
 | `PORT` | Não | Porta HTTP (padrão `3000`) |
 | `FRONTEND_ORIGINS` | Não | Lista separada por vírgulas para CORS (padrão: `localhost:5173` e `localhost:3000`) |
 | `NODE_ENV` | Não | `development` \| `production` |
@@ -79,8 +86,58 @@ API REST em **Node.js + TypeScript + Express** para o MVP da Code Chroma: ingest
 | `ALPHA_VANTAGE_API_KEY` | Não | Sem chave, o bloco Alpha Vantage na ingestão é ignorado |
 | `FRED_API_KEY` | Não | Idem para FRED |
 | `NEWS_API_KEY` | Não | Idem para NewsAPI |
+| `ALPHA_VANTAGE_USE_MOCK` | Não | `true` força fechamentos simulados (sem rede Alpha Vantage) |
 | `CRON_TZ` | Não | Fuso IANA do cron (padrão `America/Sao_Paulo`) |
 | `INGESTION_CRON_ENABLED` | Não | Defina `false` para desligar o agendamento |
+
+### Onde configurar
+
+| Onde | Uso |
+|------|-----|
+| **Raiz do backend** — ficheiro `.env` | Desenvolvimento local; copie de `.env.example`. Não commite `.env`. |
+| **Frontend** — `frontend/.env.local` | `NEXT_PUBLIC_*` (URL da API, Supabase). Ver `frontend/.env.example`. |
+| **GitHub Actions** — *Settings → Secrets and variables → Actions* | CI, deploy e workflow de ingestão (ver secção [CI/CD](#cicd-github-actions)). |
+| **Render / Vercel / Docker** | Painel de variáveis de ambiente do serviço ou compose — mesmas chaves que em produção no backend. |
+
+---
+
+## Testes automatizados
+
+- **Vitest** + ficheiros `*.test.ts` junto aos serviços (ex.: `src/services/monteCarloService.test.ts`).
+- **Monte Carlo** (`monteCarloService.ts`): percentis da riqueza terminal, reprodutibilidade com `seed`, validação de entradas.
+- **Simulação de stress** (`simulationEngineService.ts`): cenário de referência do README, penalidades geopolíticas, alertas e casos-limite.
+
+```bash
+npm run test
+```
+
+---
+
+## CI/CD (GitHub Actions)
+
+Workflows em `.github/workflows/`:
+
+| Ficheiro | Quando corre | O que faz |
+|----------|----------------|-----------|
+| `main.yml` | Push em `main` ou `master`, e diariamente (UTC 00:00) | `npm ci` → `npm run test` → `npm run lint`. Se passar, dispara deploy no **Render** via `RENDER_DEPLOY_HOOK` (opcional: se o secret não existir, o deploy é ignorado sem falhar o job). |
+| `data_ingestion.yml` | A cada 12 h (UTC) e *workflow_dispatch* | `npm ci` → `prisma generate` → `npm run ingest-data` com secrets (base de dados, Supabase, chaves de APIs). |
+
+### Secrets recomendados no GitHub (repositório)
+
+Crie em **Settings → Secrets and variables → Actions → New repository secret**:
+
+| Secret | Obrigatório para | Notas |
+|--------|------------------|--------|
+| `RENDER_DEPLOY_HOOK` | Deploy automático no Render | URL do *Deploy Hook* do serviço Render. Sem este secret, o job de deploy apenas regista aviso e termina com sucesso. |
+| `DATABASE_URL` | Workflow de ingestão | URL PostgreSQL (igual à produção ou base dedicada ao CI). |
+| `SUPABASE_URL` | Ingestão | O script carrega `config/env` (via workers); estes valores são **obrigatórios** em runtime. |
+| `SUPABASE_ANON_KEY` | Ingestão | Chave anon do mesmo projeto. |
+| `ALPHA_VANTAGE_API_KEY` | Ingestão de preços | Opcional; sem valor, o worker usa mock ou ignora conforme lógica existente. |
+| `FRED_API_KEY` | Ingestão macro | Opcional. |
+| `NEWS_API_KEY` | Ingestão de notícias / NLP | Opcional. |
+| `ALPHA_VANTAGE_USE_MOCK` | Ingestão | Opcional; defina o texto `true` se quiser forçar mock na pipeline (útil para não gastar quota). |
+
+O workflow **não** expõe chaves no código; apenas mapeia `secrets.*` para variáveis de ambiente no passo `Run data ingestion`.
 
 ---
 
@@ -376,7 +433,7 @@ Desligar os crons: `INGESTION_CRON_ENABLED=false`.
 
 ## Autenticação
 
-MVP **sem** autenticação nos endpoints descritos. Para exposição pública, coloque API Gateway, WAF ou reverse proxy com rate limit.
+O backend exige `SUPABASE_URL` e `SUPABASE_ANON_KEY` no ambiente (validação de JWT onde aplicável). Os endpoints públicos documentados podem evoluir para rotas protegidas; em exposição ampla, use API Gateway, WAF ou reverse proxy com rate limit.
 
 ---
 
@@ -394,9 +451,13 @@ src/
     index.ts            # `/api/v1` (agregador)
     v1/                 # dashboard + simulation routers
   services/
+    monteCarloService.ts # Simulação Monte Carlo (percentis)
+    simulationEngineService.ts  # Stress test MVP (sliders)
     ingestion/           # marketDataWorker, newsAnalysisWorker, types
+    *.test.ts            # Testes Vitest colocados junto aos serviços
   validation/            # schemas Zod
   lib/                   # logger, prisma, http helpers
+.github/workflows/      # CI, deploy, ingestão agendada
 prisma/
   schema.prisma
   migrations/
