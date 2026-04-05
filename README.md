@@ -22,7 +22,7 @@ API REST em **Node.js + TypeScript + Express** para o MVP da Code Chroma: ingest
    npm install
    ```
 
-2. Copie `.env.example` para `.env` e preencha pelo menos `DATABASE_URL`.
+2. Copie `.env.example` para `.env` e preencha `DATABASE_URL` e `DIRECT_URL` (em Postgres local pode ser a mesma URL nas duas; no Supabase vê secção [Supabase (Postgres)](#supabase-postgres) abaixo).
 
 3. Aplique migrações:
 
@@ -76,7 +76,8 @@ API REST em **Node.js + TypeScript + Express** para o MVP da Code Chroma: ingest
 
 | Variável | Obrigatória | Descrição |
 |----------|-------------|-----------|
-| `DATABASE_URL` | Sim | URL PostgreSQL (Prisma) |
+| `DATABASE_URL` | Sim | URL PostgreSQL para a app (no Supabase: preferir *Transaction pooler* `:6543` com `?pgbouncer=true`) |
+| `DIRECT_URL` | Sim | URL PostgreSQL **direta** (`:5432`) para migrações Prisma; em dev local pode ser igual a `DATABASE_URL` |
 | `SUPABASE_URL` | Sim | URL do projeto Supabase (validação de JWT no backend) |
 | `SUPABASE_ANON_KEY` | Sim | Chave anon/public do Supabase (`auth.getUser`) |
 | `PORT` | Não | Porta HTTP (padrão `3000`) |
@@ -97,7 +98,18 @@ API REST em **Node.js + TypeScript + Express** para o MVP da Code Chroma: ingest
 | **Raiz do backend** — ficheiro `.env` | Desenvolvimento local; copie de `.env.example`. Não commite `.env`. |
 | **Frontend** — `frontend/.env.local` | `NEXT_PUBLIC_*` (URL da API, Supabase). Ver `frontend/.env.example`. |
 | **GitHub Actions** — *Settings → Secrets and variables → Actions* | CI, deploy e workflow de ingestão (ver secção [CI/CD](#cicd-github-actions)). |
-| **Render / Vercel / Docker** | Painel de variáveis de ambiente do serviço ou compose — mesmas chaves que em produção no backend. |
+| **Railway / Render / Docker** | Painel de variáveis do serviço ou compose — mesmas chaves que em produção no backend. |
+
+### Supabase (Postgres na nuvem)
+
+O Postgres do projeto vive no **Supabase**; a API liga-se com Prisma usando **duas** URLs:
+
+1. No Supabase: **Project Settings** → **Database** → **Connection string** → **URI**.
+2. **`DATABASE_URL`** — modo **Transaction** (pooler, porta **6543**). A string deve começar por `postgresql://` ou `postgres://` e, no pooler, incluir normalmente `?pgbouncer=true` (como no snippet do painel).
+3. **`DIRECT_URL`** — **Direct connection** (host `db.<ref>.supabase.co`, porta **5432**). O Prisma usa isto em **`prisma migrate deploy`**; o pooler sozinho costuma falhar nas migrações.
+4. **`SUPABASE_URL`** e **`SUPABASE_ANON_KEY`** — **Project Settings** → **API** (URL do projeto e chave `anon` / public).
+
+No **Railway** (ou outro host), coloca estas quatro variáveis no **mesmo** serviço da API. No **`.env` local**, se usares um Postgres simples (não pooler), podes definir **`DIRECT_URL`** igual a **`DATABASE_URL`**.
 
 ---
 
@@ -129,7 +141,8 @@ Crie em **Settings → Secrets and variables → Actions → New repository secr
 | Secret | Obrigatório para | Notas |
 |--------|------------------|--------|
 | `RENDER_DEPLOY_HOOK` | Deploy automático no Render | URL do *Deploy Hook* do serviço Render. Sem este secret, o job de deploy apenas regista aviso e termina com sucesso. |
-| `DATABASE_URL` | Workflow de ingestão | URL PostgreSQL (igual à produção ou base dedicada ao CI). |
+| `DATABASE_URL` | Workflow de ingestão | URL PostgreSQL (ex.: pooler Supabase). |
+| `DIRECT_URL` | Workflow de ingestão | URL direta Postgres (ex.: Supabase `:5432`) — necessária para `prisma generate` com o schema atual. |
 | `SUPABASE_URL` | Ingestão | O script carrega `config/env` (via workers); estes valores são **obrigatórios** em runtime. |
 | `SUPABASE_ANON_KEY` | Ingestão | Chave anon do mesmo projeto. |
 | `ALPHA_VANTAGE_API_KEY` | Ingestão de preços | Opcional; sem valor, o worker usa mock ou ignora conforme lógica existente. |
