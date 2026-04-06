@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useState, type FormEvent } from "react";
+import { Suspense, useEffect, useId, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { isAxiosError } from "axios";
@@ -10,7 +10,7 @@ import { loginWithPassword } from "@/lib/authApi";
 import { hasAuthSession } from "@/lib/authSession";
 import { messageFromApiError } from "@/lib/apiErrorMessage";
 
-export default function LoginPage() {
+function LoginPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const formId = useId();
@@ -152,5 +152,19 @@ export default function LoginPage() {
         </p>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen items-center justify-center">
+          <p className="text-sm text-slate-400">A carregar…</p>
+        </div>
+      }
+    >
+      <LoginPageInner />
+    </Suspense>
   );
 }
