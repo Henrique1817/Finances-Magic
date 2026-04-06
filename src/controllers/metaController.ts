@@ -58,6 +58,11 @@ export function getApiV1Root(_req: Request, res: Response): void {
           path: `/api/${API_ROUTE_VERSION}/dashboard/historical`,
           query: { days: "opcional, 1–90, padrão 30" },
         },
+        aiAccuracy: {
+          method: "GET",
+          path: `/api/${API_ROUTE_VERSION}/dashboard/ai-accuracy`,
+          note: "Acurácia validada das previsões IA vs retorno observado + cobertura do dataset.",
+        },
       },
       simulation: {
         historical: {

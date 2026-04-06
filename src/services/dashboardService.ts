@@ -76,6 +76,34 @@ export type IngestionOpsPayload = {
   }>;
 };
 
+export type AiAccuracyTrendPoint = {
+  ts: string;
+  accuracyPct: number;
+  validatedPredictions: number;
+};
+
+export type AiAccuracyByHorizon = {
+  horizonDays: number;
+  accuracyPct: number;
+  validatedPredictions: number;
+  totalPredictions: number;
+  maePct: number | null;
+  mapePct: number | null;
+  trend: AiAccuracyTrendPoint[];
+};
+
+export type DashboardAiAccuracyPayload = {
+  currentAccuracyPct: number;
+  validatedPredictions: number;
+  totalPredictions: number;
+  trainingRows: number;
+  minTrainingRows: number;
+  trainingCoveragePct: number;
+  trend: AiAccuracyTrendPoint[];
+  byHorizon: AiAccuracyByHorizon[];
+  updatedAt: string;
+};
+
 function decimalToNumber(d: Prisma.Decimal): number {
   return Number(d.toString());
 }
@@ -265,5 +293,117 @@ export async function getIngestionOpsDashboard(): Promise<IngestionOpsPayload> {
       status: s.status,
       createdAt: s.createdAt.toISOString(),
     })),
+  };
+}
+
+const AI_ACCURACY_MIN_TRAINING_ROWS = 50_000;
+const AI_ACCURACY_HORIZONS = [7, 30] as const;
+
+export async function getDashboardAiAccuracy(): Promise<DashboardAiAccuracyPayload> {
+  const [evaluatedRows, totalsByHorizon, assetPriceRows, macroRows, climateRows, newsRows] = await Promise.all([
+    prisma.scenarioOutcome.findMany({
+      where: { status: "evaluated", horizonDays: { in: [...AI_ACCURACY_HORIZONS] } },
+      orderBy: { evaluatedAt: "asc" },
+      select: {
+        horizonDays: true,
+        evaluatedAt: true,
+        directionHit: true,
+        absoluteError: true,
+        absolutePctError: true,
+      },
+    }),
+    prisma.scenarioOutcome.groupBy({
+      by: ["horizonDays"],
+      where: { horizonDays: { in: [...AI_ACCURACY_HORIZONS] } },
+      _count: { _all: true },
+    }),
+    prisma.assetPriceHistory.count(),
+    prisma.macroIndicator.count(),
+    prisma.climateObservation.count(),
+    prisma.newsRecord.count(),
+  ]);
+
+  const trainingRows = assetPriceRows + macroRows + climateRows + newsRows;
+  const trainingCoveragePct = Math.min(100, (trainingRows / AI_ACCURACY_MIN_TRAINING_ROWS) * 100);
+
+  if (evaluatedRows.length === 0) {
+    return {
+      currentAccuracyPct: 0,
+      validatedPredictions: 0,
+      totalPredictions: totalsByHorizon.reduce((sum, x) => sum + x._count._all, 0),
+      trainingRows,
+      minTrainingRows: AI_ACCURACY_MIN_TRAINING_ROWS,
+      trainingCoveragePct,
+      trend: [],
+      byHorizon: AI_ACCURACY_HORIZONS.map((horizonDays) => ({
+        horizonDays,
+        accuracyPct: 0,
+        validatedPredictions: 0,
+        totalPredictions: totalsByHorizon.find((x) => x.horizonDays === horizonDays)?._count._all ?? 0,
+        maePct: null,
+        mapePct: null,
+        trend: [],
+      })),
+      updatedAt: new Date().toISOString(),
+    };
+  }
+
+  const byHorizon: AiAccuracyByHorizon[] = [];
+  for (const horizon of AI_ACCURACY_HORIZONS) {
+    const rows = evaluatedRows.filter((r) => r.horizonDays === horizon);
+    let hits = 0;
+    let valids = 0;
+    let sumAbsError = 0;
+    let sumAbsPctError = 0;
+    let absPctCount = 0;
+    const trend: AiAccuracyTrendPoint[] = [];
+
+    for (const r of rows) {
+      if (r.directionHit !== null) {
+        valids += 1;
+        if (r.directionHit) hits += 1;
+      }
+      if (r.absoluteError !== null) sumAbsError += Number(r.absoluteError);
+      if (r.absolutePctError !== null) {
+        sumAbsPctError += Number(r.absolutePctError);
+        absPctCount += 1;
+      }
+      if (r.evaluatedAt && valids > 0) {
+        trend.push({
+          ts: r.evaluatedAt.toISOString(),
+          accuracyPct: (hits / valids) * 100,
+          validatedPredictions: valids,
+        });
+      }
+    }
+
+    byHorizon.push({
+      horizonDays: horizon,
+      accuracyPct: valids > 0 ? (hits / valids) * 100 : 0,
+      validatedPredictions: valids,
+      totalPredictions: totalsByHorizon.find((x) => x.horizonDays === horizon)?._count._all ?? 0,
+      maePct: rows.length > 0 ? (sumAbsError / rows.length) * 100 : null,
+      mapePct: absPctCount > 0 ? (sumAbsPctError / absPctCount) * 100 : null,
+      trend: trend.slice(-40),
+    });
+  }
+
+  const validatedPredictions = byHorizon.reduce((sum, h) => sum + h.validatedPredictions, 0);
+  const currentAccuracyPct =
+    validatedPredictions > 0
+      ? byHorizon.reduce((sum, h) => sum + h.accuracyPct * h.validatedPredictions, 0) / validatedPredictions
+      : 0;
+  const defaultTrend = byHorizon.find((h) => h.horizonDays === 7)?.trend ?? [];
+
+  return {
+    currentAccuracyPct,
+    validatedPredictions,
+    totalPredictions: totalsByHorizon.reduce((sum, x) => sum + x._count._all, 0),
+    trainingRows,
+    minTrainingRows: AI_ACCURACY_MIN_TRAINING_ROWS,
+    trainingCoveragePct,
+    trend: defaultTrend,
+    byHorizon,
+    updatedAt: new Date().toISOString(),
   };
 }

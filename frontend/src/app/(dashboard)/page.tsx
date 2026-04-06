@@ -1,4 +1,5 @@
 import { WalletPanel } from "@/components/wallet/WalletPanel";
+import { AiAccuracyRealtimeCard } from "@/components/dashboard/AiAccuracyRealtimeCard";
 
 export default function DashboardPage() {
   return (
@@ -17,6 +18,7 @@ export default function DashboardPage() {
         </p>
       </section>
 
+      <AiAccuracyRealtimeCard />
       <WalletPanel />
     </div>
   );

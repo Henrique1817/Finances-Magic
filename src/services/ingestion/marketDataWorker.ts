@@ -19,6 +19,7 @@ const log = logger.child({ worker: "marketData" });
 const ALPHA_URL = "https://www.alphavantage.co/query";
 const FRED_OBS_URL = "https://api.stlouisfed.org/fred/series/observations";
 const YAHOO_CHART_URL = "https://query1.finance.yahoo.com/v8/finance/chart";
+const STOOQ_DAILY_CSV_URL = "https://stooq.com/q/d/l/";
 
 type TimeSeriesDaily = Record<string, Record<string, string>>;
 
@@ -61,10 +62,9 @@ function logRateLimit(provider: string, context: string, status?: number): void 
 
 async function fetchAlphaVantageDailySeries(symbol: string): Promise<{ date: string; close: string }[] | null> {
   if (env.alphaVantageUseMock || !env.alphaVantageApiKey) {
-    if (!env.alphaVantageApiKey && !env.alphaVantageUseMock) {
-      log.warn("ALPHA_VANTAGE_API_KEY ausente — usando série mock de fechamentos diários");
-    }
-    return mockDailyCloses(symbol);
+    if (env.alphaVantageUseMock) return mockDailyCloses(symbol);
+    log.warn("ALPHA_VANTAGE_API_KEY ausente — fonte Alpha Vantage ignorada (seguindo para fallback real)");
+    return null;
   }
 
   return withRetry("alphaVantage", async () => {
@@ -152,12 +152,58 @@ async function fetchYahooDailySeries(symbol: string): Promise<{ date: string; cl
     return out.length ? out : null;
   } catch (err) {
     if (isAxiosError(err) && err.response?.status === 429) {
-      logRateLimit("alphaVantage", symbol, 429);
+      logRateLimit("yahooFinance", symbol, 429);
       return null;
     }
     log.error({ err, symbol }, "Falha ao consultar fallback Yahoo Finance");
     return null;
   }
+}
+
+function toStooqSymbol(symbol: string): string {
+  const s = symbol.trim().toLowerCase();
+  if (s.endsWith(".sa")) return `${s.slice(0, -3)}.br`;
+  if (s.endsWith(".us") || s.endsWith(".br") || s.endsWith(".uk") || s.endsWith(".de")) return s;
+  return `${s}.us`;
+}
+
+async function fetchStooqDailySeries(symbol: string): Promise<{ date: string; close: string }[] | null> {
+  const stooqSymbol = toStooqSymbol(symbol);
+  const payload = await withRetry("stooq", async () => {
+    const { data, status } = await axios.get<string>(STOOQ_DAILY_CSV_URL, {
+      params: { s: stooqSymbol, i: "d" },
+      responseType: "text",
+      transformResponse: [(v) => v as string],
+      validateStatus: () => true,
+    });
+    if (status === 429) {
+      markProvider429("stooq");
+      throw new Error("stooq_429");
+    }
+    if (status >= 400) throw new Error(`stooq_http_${status}`);
+    return data;
+  });
+  if (!payload) return null;
+
+  const lines = payload
+    .split("\n")
+    .map((x) => x.trim())
+    .filter(Boolean);
+  if (lines.length <= 1) return null;
+
+  const out: { date: string; close: string }[] = [];
+  for (let i = 1; i < lines.length; i++) {
+    const cols = lines[i]!.split(",");
+    const date = cols[0]?.trim();
+    const close = cols[4]?.trim();
+    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
+    if (!close || close.toLowerCase() === "null" || close.toLowerCase() === "n/d") continue;
+    const closeNum = Number(close);
+    if (!Number.isFinite(closeNum) || closeNum <= 0) continue;
+    out.push({ date, close: closeNum.toFixed(8) });
+  }
+  out.sort((a, b) => b.date.localeCompare(a.date));
+  return out.length ? out : null;
 }
 
 async function upsertAssetPrice(
@@ -274,18 +320,31 @@ export async function runMarketDataIngestion(): Promise<void> {
     for (let i = 0; i < MARKET_WORKER_ASSETS.length; i++) {
       const cfg = MARKET_WORKER_ASSETS[i]!;
       try {
-        let sourceProvider = "alphaVantage";
-        let series = await fetchAlphaVantageDailySeries(cfg.symbol);
-        if (!series) {
-          await recordFallbackEvent({
-            pipeline: "marketData",
-            fromProvider: "alphaVantage",
-            toProvider: "yahooFinance",
-            reason: "primary_unavailable_or_quota",
-            context: cfg.symbol,
-          });
-          sourceProvider = "yahooFinance";
-          series = await fetchYahooDailySeries(cfg.symbol);
+        const providers = [
+          { name: "alphaVantage" as const, fetch: () => fetchAlphaVantageDailySeries(cfg.symbol) },
+          { name: "yahooFinance" as const, fetch: () => fetchYahooDailySeries(cfg.symbol) },
+          { name: "stooq" as const, fetch: () => fetchStooqDailySeries(cfg.symbol) },
+        ];
+        let sourceProvider: "alphaVantage" | "yahooFinance" | "stooq" = "alphaVantage";
+        let series: { date: string; close: string }[] | null = null;
+
+        for (let p = 0; p < providers.length; p++) {
+          const current = providers[p]!;
+          series = await current.fetch();
+          if (series?.length) {
+            sourceProvider = current.name;
+            break;
+          }
+          if (p < providers.length - 1) {
+            const next = providers[p + 1]!;
+            await recordFallbackEvent({
+              pipeline: "marketData",
+              fromProvider: current.name,
+              toProvider: next.name,
+              reason: "primary_unavailable_or_quota",
+              context: cfg.symbol,
+            });
+          }
         }
         if (!series) continue;
         for (const row of series) {

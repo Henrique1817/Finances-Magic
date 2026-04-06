@@ -35,10 +35,42 @@ model Scenario {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user     User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  outcomes ScenarioOutcome[]
 
   @@index([userId, createdAt(sort: Desc)])
   @@map("scenarios")
+}
+
+/// Outcome supervisionado da previsão IA por cenário/ativo/horizonte (D+N)
+model ScenarioOutcome {
+  id                    String   @id @default(cuid())
+  outcomeKey            String   @unique
+  scenarioId            String
+  walletAssetId         String?
+  assetSymbol           String
+  horizonDays           Int
+  predictedReturn       Decimal  @db.Decimal(20, 8)
+  predictedDirection    Int
+  baselineDate          DateTime @db.Date
+  baselineClose         Decimal  @db.Decimal(20, 8)
+  targetDate            DateTime @db.Date
+  actualReturn          Decimal? @db.Decimal(20, 8)
+  actualDirection       Int?
+  directionHit          Boolean?
+  absoluteError         Decimal? @db.Decimal(20, 8)
+  absolutePctError      Decimal? @db.Decimal(20, 8)
+  status                String   @default("pending")
+  evaluatedAt           DateTime?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  scenario Scenario @relation(fields: [scenarioId], references: [id], onDelete: Cascade)
+
+  @@index([horizonDays, status, targetDate(sort: Asc)])
+  @@index([assetSymbol, horizonDays, status])
+  @@index([scenarioId, horizonDays])
+  @@map("scenario_outcomes")
 }
 
 /// Carteira 1:1 com o usuário

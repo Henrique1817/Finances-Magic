@@ -1,7 +1,12 @@
 import type { NextFunction, Request, Response } from "express";
 import { sendSuccess } from "../lib/http";
 import { asyncHandler } from "../middleware/asyncHandler";
-import { getDashboardCurrentStatus, getDashboardHistorical, getIngestionOpsDashboard } from "../services/dashboardService";
+import {
+  getDashboardAiAccuracy,
+  getDashboardCurrentStatus,
+  getDashboardHistorical,
+  getIngestionOpsDashboard,
+} from "../services/dashboardService";
 import type { SimulationHistoricalQuery } from "../validation/querySchemas";
 
 export const getCurrentStatusHandler = asyncHandler(async (_req: Request, res: Response, _next: NextFunction) => {
@@ -19,5 +24,10 @@ export const getDashboardHistoricalHandler = asyncHandler(
 
 export const getIngestionOpsHandler = asyncHandler(async (_req: Request, res: Response, _next: NextFunction) => {
   const data = await getIngestionOpsDashboard();
+  sendSuccess(res, data);
+});
+
+export const getAiAccuracyHandler = asyncHandler(async (_req: Request, res: Response, _next: NextFunction) => {
+  const data = await getDashboardAiAccuracy();
   sendSuccess(res, data);
 });

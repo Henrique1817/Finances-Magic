@@ -469,6 +469,28 @@ export function SimulatorWorkspace() {
                       </ul>
                     </div>
                   ) : null}
+                  {displayResponse.narrative.evidence && displayResponse.narrative.evidence.length > 0 ? (
+                    <div className="mt-4 border-t border-white/10 pt-3">
+                      <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+                        Provas do cenário
+                      </p>
+                      <ul className="mt-2 space-y-2">
+                        {displayResponse.narrative.evidence.map((ev, idx) => (
+                          <li key={`${ev.title}-${idx}`} className="rounded-lg border border-white/10 bg-white/[0.02] p-2.5">
+                            <p className="text-xs font-semibold text-cyan-100">{ev.title}</p>
+                            <p className="mt-1 text-xs text-slate-300">{ev.detail}</p>
+                            <div className="mt-1 flex flex-wrap items-center gap-2 text-[10px] text-slate-500">
+                              {ev.relatedFactorId ? <span>Fator: {ev.relatedFactorId}</span> : null}
+                              {ev.relatedAssetLabel ? <span>Ativo: {ev.relatedAssetLabel}</span> : null}
+                              {typeof ev.confidence === "number" ? (
+                                <span>Confiança: {(ev.confidence * 100).toFixed(0)}%</span>
+                              ) : null}
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
                   <p className="mt-4 border-t border-white/10 pt-3 text-xs text-amber-200/85">
                     {displayResponse.narrative.disclaimer}
                   </p>

@@ -125,7 +125,9 @@ export function AssetLiveSearch({
       if (!hasMore || isLoading || isLoadingMore) return;
       const t = debouncedTerm.trim();
       if (t.length < 2) return;
-      const distanceToBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+      const listEl = listRef.current;
+      if (!listEl) return;
+      const distanceToBottom = listEl.scrollHeight - listEl.scrollTop - listEl.clientHeight;
       if (distanceToBottom > 48) return;
       void fetchPage(t, results.length, true);
     }

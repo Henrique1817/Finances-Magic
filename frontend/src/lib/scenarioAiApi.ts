@@ -7,6 +7,13 @@ export type AiScenarioNarrative = {
   perAsset: { label: string; impactSummary: string }[];
   disclaimer: string;
   riskNotes?: string[];
+  evidence?: Array<{
+    title: string;
+    detail: string;
+    relatedFactorId?: string;
+    relatedAssetLabel?: string;
+    confidence?: number;
+  }>;
 };
 
 export type AiScenarioQuantLine = {

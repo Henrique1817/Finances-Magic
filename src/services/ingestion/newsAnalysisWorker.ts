@@ -25,6 +25,7 @@ const log = logger.child({ worker: "newsAnalysis" });
 
 const NEWS_EVERYTHING_URL = "https://newsapi.org/v2/everything";
 const GDELT_DOC_URL = "https://api.gdeltproject.org/api/v2/doc/doc";
+const GOOGLE_NEWS_RSS_URL = "https://news.google.com/rss/search";
 
 /** Palavras que elevam o risco geopolítico (heurística). */
 const NEGATIVE_SIGNALS = [
@@ -300,6 +301,65 @@ async function fetchGdeltForQuery(q: string): Promise<NewsArticleForAnalysis[]> 
   return rows;
 }
 
+function decodeXmlEntities(raw: string): string {
+  return raw
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, "\"")
+    .replace(/&#39;/g, "'")
+    .trim();
+}
+
+function firstTagValue(xmlChunk: string, tag: string): string | null {
+  const match = new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`, "i").exec(xmlChunk);
+  if (!match?.[1]) return null;
+  return decodeXmlEntities(match[1]);
+}
+
+async function fetchGoogleNewsRssForQuery(q: string): Promise<NewsArticleForAnalysis[]> {
+  const payload = await withRetry("googleNewsRss", async () => {
+    const { data, status } = await axios.get<string>(GOOGLE_NEWS_RSS_URL, {
+      params: {
+        q,
+        hl: "en-US",
+        gl: "US",
+        ceid: "US:en",
+      },
+      responseType: "text",
+      transformResponse: [(v) => v as string],
+      validateStatus: () => true,
+    });
+    if (status === 429) {
+      markProvider429("googleNewsRss");
+      throw new Error("google_news_rss_429");
+    }
+    if (status >= 400) throw new Error(`google_news_rss_http_${status}`);
+    return data;
+  });
+  if (!payload) return [];
+
+  const itemMatches = payload.match(/<item>[\s\S]*?<\/item>/gi) ?? [];
+  const rows: NewsArticleForAnalysis[] = [];
+  for (const item of itemMatches.slice(0, NEWS_ANALYSIS_PAGE_SIZE)) {
+    const title = firstTagValue(item, "title");
+    const url = firstTagValue(item, "link");
+    if (!title || !url) continue;
+    const pubDateRaw = firstTagValue(item, "pubDate");
+    const publishedAt = pubDateRaw ? new Date(pubDateRaw) : new Date();
+    const sourceName = firstTagValue(item, "source") || "google-news-rss";
+    rows.push({
+      title,
+      description: null,
+      url,
+      externalId: "google-news-rss",
+      sourceName,
+      publishedAt: Number.isNaN(publishedAt.getTime()) ? new Date() : publishedAt,
+    });
+  }
+  return rows;
+}
+
 /**
  * Coleta NewsAPI (várias queries), analisa risco, grava `MacroIndicator` + `NewsRecord`.
  */
@@ -325,19 +385,34 @@ export async function runNewsAnalysisIngestion(): Promise<void> {
       ];
       for (let i = 0; i < mergedQueries.length; i++) {
         const q = mergedQueries[i]!.q;
-        let provider = "newsApi";
-        let batch = await fetchNewsForQuery(q, fromStr);
-        if (batch.length === 0) {
-          await recordFallbackEvent({
-            pipeline: "newsAnalysis",
-            fromProvider: "newsApi",
-            toProvider: "gdelt",
-            reason: "primary_empty_or_quota",
-            context: q.slice(0, 120),
-          });
-          provider = "gdelt";
-          batch = await fetchGdeltForQuery(q);
+        const providers = [
+          { name: "newsApi" as const, fetch: () => fetchNewsForQuery(q, fromStr) },
+          { name: "gdelt" as const, fetch: () => fetchGdeltForQuery(q) },
+          { name: "googleNewsRss" as const, fetch: () => fetchGoogleNewsRssForQuery(q) },
+        ];
+
+        let provider: "newsApi" | "gdelt" | "googleNewsRss" = "newsApi";
+        let batch: NewsArticleForAnalysis[] = [];
+
+        for (let p = 0; p < providers.length; p++) {
+          const current = providers[p]!;
+          batch = await current.fetch();
+          if (batch.length > 0) {
+            provider = current.name;
+            break;
+          }
+          if (p < providers.length - 1) {
+            const next = providers[p + 1]!;
+            await recordFallbackEvent({
+              pipeline: "newsAnalysis",
+              fromProvider: current.name,
+              toProvider: next.name,
+              reason: "primary_empty_or_quota",
+              context: q.slice(0, 120),
+            });
+          }
         }
+
         for (const a of batch) {
           const key = a.url?.trim() ?? `${a.title}\0${a.publishedAt.toISOString()}`;
           if (!merged.has(key)) merged.set(key, a);

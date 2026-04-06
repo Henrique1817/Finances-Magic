@@ -28,6 +28,17 @@ const narrativeSchema = z.object({
   ),
   disclaimer: z.string(),
   riskNotes: z.array(z.string()).optional(),
+  evidence: z
+    .array(
+      z.object({
+        title: z.string(),
+        detail: z.string(),
+        relatedFactorId: z.string().optional(),
+        relatedAssetLabel: z.string().optional(),
+        confidence: z.number().min(0).max(1).optional(),
+      }),
+    )
+    .optional(),
 });
 
 export type NarrativePayload = z.infer<typeof narrativeSchema>;
@@ -115,6 +126,12 @@ function buildMockNarrative(args: {
     disclaimer:
       "Resultado de validação técnica em modo mock. Não constitui aconselhamento financeiro.",
     riskNotes: ["Defina GEMINI_USE_MOCK=false para usar o modelo real."],
+    evidence: args.quant.perLine.slice(0, 4).map((row) => ({
+      title: `Impacto quantitativo em ${row.assetSymbol ?? row.nome}`,
+      detail: `Retorno composto estimado: ${(row.combinedReturnDecimal * 100).toFixed(2)}% com base em beta histórico.`,
+      relatedAssetLabel: row.assetSymbol ? `${row.nome} (${row.assetSymbol})` : row.nome,
+      confidence: 0.6,
+    })),
   };
 }
 
@@ -334,6 +351,7 @@ export async function geminiBuildNarrative(args: {
     '- "perAsset": array de { "label", "impactSummary" } alinhado às linhas da carteira quando possível;',
     '- "disclaimer": aviso de que é ilustrativo, não aconselhamento de investimento;',
     '- "riskNotes" (opcional): bullets com lacunas de dados ou limitações.',
+    '- "evidence" (obrigatório): lista com 3-8 itens { "title","detail","relatedFactorId"?(catalogId),"relatedAssetLabel"?,"confidence"?(0..1) } explicando por que o cenário foi gerado.',
     "",
     "Baseia-te no resultado quantitativo (JSON) e não contradigas os sinais (+/-) das projeções por linha.",
     "",

@@ -70,9 +70,11 @@ export const ALPHA_VANTAGE_REQUEST_GAP_MS = 1_500;
 export type ProviderName =
   | "alphaVantage"
   | "yahooFinance"
+  | "stooq"
   | "fred"
   | "newsApi"
   | "gdelt"
+  | "googleNewsRss"
   | "openMeteo";
 
 export type ProviderBudget = {
@@ -99,6 +101,13 @@ export const INGESTION_PROVIDER_BUDGETS: Record<ProviderName, ProviderBudget> = 
     circuitBreakerFailures: 4,
     circuitBreakerMs: 20 * 60_000,
   },
+  stooq: {
+    requestsPerMinute: 30,
+    requestsPerDay: 3_000,
+    cooldownOn429Ms: 10 * 60_000,
+    circuitBreakerFailures: 5,
+    circuitBreakerMs: 20 * 60_000,
+  },
   fred: {
     requestsPerMinute: 60,
     requestsPerDay: 2_000,
@@ -115,6 +124,13 @@ export const INGESTION_PROVIDER_BUDGETS: Record<ProviderName, ProviderBudget> = 
   },
   gdelt: {
     requestsPerMinute: 30,
+    requestsPerDay: 2_000,
+    cooldownOn429Ms: 5 * 60_000,
+    circuitBreakerFailures: 5,
+    circuitBreakerMs: 10 * 60_000,
+  },
+  googleNewsRss: {
+    requestsPerMinute: 20,
     requestsPerDay: 2_000,
     cooldownOn429Ms: 5 * 60_000,
     circuitBreakerFailures: 5,

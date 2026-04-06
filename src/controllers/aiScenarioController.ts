@@ -23,6 +23,53 @@ function isQuantFactorId(catalogId: string): boolean {
   return catalogId.startsWith("macro:") || catalogId.startsWith("asset:") || catalogId.startsWith("climate:");
 }
 
+function buildEvidenceFromQuant(
+  factors: Array<{ catalogId: string; shockPercent: number; rationale?: string }>,
+  quant: Awaited<ReturnType<typeof runQuantScenario>>,
+): NonNullable<NarrativePayload["evidence"]> {
+  const evidence: NonNullable<NarrativePayload["evidence"]> = [];
+
+  for (const f of factors.slice(0, 4)) {
+    evidence.push({
+      title: `Fator aplicado: ${f.catalogId}`,
+      detail: `Choque hipotético de ${f.shockPercent >= 0 ? "+" : ""}${f.shockPercent.toFixed(2)}% no fator selecionado.`,
+      relatedFactorId: f.catalogId,
+      confidence: 0.65,
+    });
+    if (f.rationale?.trim()) {
+      evidence.push({
+        title: `Racional do fator ${f.catalogId}`,
+        detail: f.rationale.trim().slice(0, 240),
+        relatedFactorId: f.catalogId,
+        confidence: 0.55,
+      });
+    }
+  }
+
+  const strongestLines = [...quant.perLine]
+    .sort((a, b) => Math.abs(b.combinedReturnDecimal) - Math.abs(a.combinedReturnDecimal))
+    .slice(0, 4);
+  for (const line of strongestLines) {
+    const label = line.assetSymbol ? `${line.nome} (${line.assetSymbol})` : line.nome;
+    evidence.push({
+      title: `Sensibilidade estimada em ${label}`,
+      detail: `Retorno projetado de ${(line.combinedReturnDecimal * 100).toFixed(2)}% com base na exposição histórica da posição.`,
+      relatedAssetLabel: label,
+      confidence: 0.7,
+    });
+  }
+
+  for (const gap of quant.dataGaps.slice(0, 2)) {
+    evidence.push({
+      title: "Limitação de dados identificada",
+      detail: gap,
+      confidence: 0.35,
+    });
+  }
+
+  return evidence.slice(0, 8);
+}
+
 export const postAiScenarioHandler = asyncHandler(
   async (req: Request, res: Response, _next: NextFunction) => {
     const body = req.validatedBody as AiScenarioBody;
@@ -80,9 +127,17 @@ export const postAiScenarioHandler = asyncHandler(
         disclaimer:
           "Ilustração baseada em dados históricos limitados. Não constitui recomendação de investimento ou consultoria financeira.",
         riskNotes: [...(narrative.code === "PARSE_FAILED" ? [narrative.message] : []), ...quant.dataGaps],
+        evidence: buildEvidenceFromQuant(validatedFactors, quant),
       };
     } else {
-      narrativePayload = narrative.data;
+      const fallbackEvidence = buildEvidenceFromQuant(validatedFactors, quant);
+      narrativePayload = {
+        ...narrative.data,
+        evidence:
+          narrative.data.evidence && narrative.data.evidence.length > 0
+            ? narrative.data.evidence
+            : fallbackEvidence,
+      };
     }
 
     const title = scenarioTitleFromMessage(body.message, parsed.data.userIntentSummary ?? null);
