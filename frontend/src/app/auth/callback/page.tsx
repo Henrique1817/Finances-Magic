@@ -54,6 +54,15 @@ function AuthCallbackInner() {
     setMessage("Não foi possível concluir o login. Volte a tentar.");
   }, [router, searchParams]);
 
+  useEffect(() => {
+    if (!failed) return;
+    const timer = window.setTimeout(() => {
+      const msg = message.trim() || "Não foi possível concluir o login. Volte a tentar.";
+      router.replace(`/login?error=${encodeURIComponent(msg)}`);
+    }, 2500);
+    return () => window.clearTimeout(timer);
+  }, [failed, message, router]);
+
   return (
     <div className="flex min-h-screen items-center justify-center p-4">
       <div className="glass-panel max-w-md p-8 text-center">

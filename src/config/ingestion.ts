@@ -44,6 +44,14 @@ export type FredSeriesConfig = {
   name: string;
 };
 
+export type WorldBankIndicatorConfig = {
+  /** Código ISO-2 do país (ex.: US, BR, CN). */
+  countryIso2: string;
+  /** Código do indicador no World Bank. */
+  indicatorId: string;
+  name: string;
+};
+
 /** FRED: juros, petróleo, volatilidade implícita, FX, inflação. */
 export const MARKET_WORKER_FRED_SERIES: FredSeriesConfig[] = [
   { seriesId: "DFF", name: "Taxa efetiva Federal Funds (diária)" },
@@ -64,6 +72,31 @@ export const MARKET_WORKER_FRED_SERIES: FredSeriesConfig[] = [
   { seriesId: "RSAFS", name: "Vendas no varejo EUA (mensal)" },
 ];
 
+/** World Bank (dados anuais): cobertura macro global por país. */
+export const MARKET_WORKER_WORLD_BANK_INDICATORS: WorldBankIndicatorConfig[] = [
+  { countryIso2: "US", indicatorId: "NY.GDP.MKTP.KD.ZG", name: "PIB real (% a.a.) — EUA" },
+  { countryIso2: "US", indicatorId: "FP.CPI.TOTL.ZG", name: "Inflação CPI (% a.a.) — EUA" },
+  { countryIso2: "US", indicatorId: "SL.UEM.TOTL.ZS", name: "Desemprego (% força de trabalho) — EUA" },
+  { countryIso2: "US", indicatorId: "NE.EXP.GNFS.ZS", name: "Exportações (% do PIB) — EUA" },
+
+  { countryIso2: "BR", indicatorId: "NY.GDP.MKTP.KD.ZG", name: "PIB real (% a.a.) — Brasil" },
+  { countryIso2: "BR", indicatorId: "FP.CPI.TOTL.ZG", name: "Inflação CPI (% a.a.) — Brasil" },
+  { countryIso2: "BR", indicatorId: "SL.UEM.TOTL.ZS", name: "Desemprego (% força de trabalho) — Brasil" },
+  { countryIso2: "BR", indicatorId: "NE.EXP.GNFS.ZS", name: "Exportações (% do PIB) — Brasil" },
+
+  { countryIso2: "CN", indicatorId: "NY.GDP.MKTP.KD.ZG", name: "PIB real (% a.a.) — China" },
+  { countryIso2: "CN", indicatorId: "FP.CPI.TOTL.ZG", name: "Inflação CPI (% a.a.) — China" },
+  { countryIso2: "CN", indicatorId: "SL.UEM.TOTL.ZS", name: "Desemprego (% força de trabalho) — China" },
+
+  { countryIso2: "IN", indicatorId: "NY.GDP.MKTP.KD.ZG", name: "PIB real (% a.a.) — Índia" },
+  { countryIso2: "IN", indicatorId: "FP.CPI.TOTL.ZG", name: "Inflação CPI (% a.a.) — Índia" },
+  { countryIso2: "IN", indicatorId: "SL.UEM.TOTL.ZS", name: "Desemprego (% força de trabalho) — Índia" },
+
+  { countryIso2: "DE", indicatorId: "NY.GDP.MKTP.KD.ZG", name: "PIB real (% a.a.) — Alemanha" },
+  { countryIso2: "DE", indicatorId: "FP.CPI.TOTL.ZG", name: "Inflação CPI (% a.a.) — Alemanha" },
+  { countryIso2: "DE", indicatorId: "SL.UEM.TOTL.ZS", name: "Desemprego (% força de trabalho) — Alemanha" },
+];
+
 /** Intervalo entre chamadas Alpha Vantage (free tier). */
 export const ALPHA_VANTAGE_REQUEST_GAP_MS = 1_500;
 
@@ -72,6 +105,7 @@ export type ProviderName =
   | "yahooFinance"
   | "stooq"
   | "fred"
+  | "worldBank"
   | "newsApi"
   | "gdelt"
   | "googleNewsRss"
@@ -114,6 +148,13 @@ export const INGESTION_PROVIDER_BUDGETS: Record<ProviderName, ProviderBudget> = 
     cooldownOn429Ms: 10 * 60_000,
     circuitBreakerFailures: 5,
     circuitBreakerMs: 15 * 60_000,
+  },
+  worldBank: {
+    requestsPerMinute: 30,
+    requestsPerDay: 3_000,
+    cooldownOn429Ms: 5 * 60_000,
+    circuitBreakerFailures: 5,
+    circuitBreakerMs: 10 * 60_000,
   },
   newsApi: {
     requestsPerMinute: 5,

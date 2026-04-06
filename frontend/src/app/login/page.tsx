@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useState, type FormEvent } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { isAxiosError } from "axios";
 import { GoogleOAuthButton } from "@/components/auth/GoogleOAuthButton";
 import { formatApiAuthMessage } from "@/lib/formatAuthError";
@@ -12,6 +12,7 @@ import { messageFromApiError } from "@/lib/apiErrorMessage";
 
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const formId = useId();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -21,6 +22,12 @@ export default function LoginPage() {
   useEffect(() => {
     if (hasAuthSession()) router.replace("/");
   }, [router]);
+
+  useEffect(() => {
+    const qErr = searchParams.get("error");
+    if (!qErr) return;
+    setError(decodeURIComponent(String(qErr).replace(/\+/g, " ")));
+  }, [searchParams]);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();

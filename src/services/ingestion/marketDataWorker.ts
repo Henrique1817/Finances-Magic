@@ -1,6 +1,11 @@
 import { Prisma, type AssetType } from "@prisma/client";
 import axios, { isAxiosError } from "axios";
-import { ALPHA_VANTAGE_REQUEST_GAP_MS, MARKET_WORKER_ASSETS, MARKET_WORKER_FRED_SERIES } from "../../config/ingestion";
+import {
+  ALPHA_VANTAGE_REQUEST_GAP_MS,
+  MARKET_WORKER_ASSETS,
+  MARKET_WORKER_FRED_SERIES,
+  MARKET_WORKER_WORLD_BANK_INDICATORS,
+} from "../../config/ingestion";
 import { env } from "../../config/env";
 import { runWithIngestionRunLog } from "../../lib/ingestionRun";
 import { logger } from "../../lib/logger";
@@ -18,6 +23,7 @@ const log = logger.child({ worker: "marketData" });
 
 const ALPHA_URL = "https://www.alphavantage.co/query";
 const FRED_OBS_URL = "https://api.stlouisfed.org/fred/series/observations";
+const WORLD_BANK_INDICATOR_URL = "https://api.worldbank.org/v2/country";
 const YAHOO_CHART_URL = "https://query1.finance.yahoo.com/v8/finance/chart";
 const STOOQ_DAILY_CSV_URL = "https://stooq.com/q/d/l/";
 
@@ -231,6 +237,7 @@ async function upsertAssetPrice(
 }
 
 type FredObservation = { date: string; value: string };
+type WorldBankObservation = { date?: string; value?: number | null };
 
 function parseObsDate(yyyyMmDd: string): Date {
   return new Date(`${yyyyMmDd}T12:00:00.000Z`);
@@ -303,6 +310,75 @@ async function fetchAndPersistFredSeries(seriesId: string, name: string): Promis
       return count;
     }
     log.error({ err, seriesId }, "Falha FRED");
+  }
+  return count;
+}
+
+async function fetchAndPersistWorldBankIndicator(
+  countryIso2: string,
+  indicatorId: string,
+  name: string,
+): Promise<number> {
+  let count = 0;
+  try {
+    const payload = await withRetry("worldBank", async () => {
+      const url = `${WORLD_BANK_INDICATOR_URL}/${encodeURIComponent(countryIso2)}/indicator/${encodeURIComponent(indicatorId)}`;
+      const { data, status } = await axios.get<unknown>(url, {
+        params: {
+          format: "json",
+          per_page: 120,
+          mrnev: 20,
+        },
+        validateStatus: () => true,
+      });
+      if (status === 429) {
+        markProvider429("worldBank");
+        logRateLimit("worldBank", `${countryIso2}:${indicatorId}`, status);
+        throw new Error("world_bank_429");
+      }
+      if (status >= 400) {
+        throw new Error(`world_bank_http_${status}`);
+      }
+      return data;
+    });
+    if (!payload || !Array.isArray(payload) || payload.length < 2 || !Array.isArray(payload[1])) {
+      return 0;
+    }
+
+    const observations = payload[1] as WorldBankObservation[];
+    for (const obs of observations) {
+      const year = Number(obs.date);
+      const value = obs.value;
+      if (!Number.isInteger(year) || year < 1900 || year > 2200) continue;
+      if (typeof value !== "number" || !Number.isFinite(value)) continue;
+
+      const obsDate = new Date(Date.UTC(year, 6, 1, 12, 0, 0));
+      const seriesId = `WB_${countryIso2.toUpperCase()}_${indicatorId.replace(/\./g, "_")}`;
+      await prisma.macroIndicator.upsert({
+        where: { seriesId_date: { seriesId, date: obsDate } },
+        create: {
+          seriesId,
+          name,
+          date: obsDate,
+          value: new Prisma.Decimal(value),
+        },
+        update: {
+          name,
+          value: new Prisma.Decimal(value),
+        },
+      });
+      count += 1;
+    }
+    log.info(
+      { countryIso2, indicatorId, rows: count },
+      "Série World Bank persistida (até 20 observações anuais)",
+    );
+  } catch (err) {
+    if (isAxiosError(err) && err.response?.status === 429) {
+      logRateLimit("worldBank", `${countryIso2}:${indicatorId}`, 429);
+      return count;
+    }
+    log.error({ err, countryIso2, indicatorId }, "Falha World Bank");
   }
   return count;
 }
@@ -396,6 +472,31 @@ export async function runMarketDataIngestion(): Promise<void> {
           provider: "fred",
           itemType: "macro_series",
           itemKey: s.seriesId,
+          status: "error",
+          reason: err instanceof Error ? err.message : "unknown_error",
+        });
+      }
+    }
+
+    for (const cfg of MARKET_WORKER_WORLD_BANK_INDICATORS) {
+      try {
+        const n = await fetchAndPersistWorldBankIndicator(cfg.countryIso2, cfg.indicatorId, cfg.name);
+        rowsUpserted += n;
+        await recordIngestionItemStatus({
+          jobName: "marketData",
+          provider: "worldBank",
+          itemType: "macro_series",
+          itemKey: `${cfg.countryIso2}:${cfg.indicatorId}`,
+          status: n > 0 ? "success" : "skipped",
+          rowsUpserted: n,
+        });
+      } catch (err) {
+        log.error({ err, cfg }, "Erro isolado World Bank / Prisma");
+        await recordIngestionItemStatus({
+          jobName: "marketData",
+          provider: "worldBank",
+          itemType: "macro_series",
+          itemKey: `${cfg.countryIso2}:${cfg.indicatorId}`,
           status: "error",
           reason: err instanceof Error ? err.message : "unknown_error",
         });

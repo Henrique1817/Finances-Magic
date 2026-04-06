@@ -37,7 +37,6 @@ export async function loadFactorCatalog(): Promise<FactorCatalog> {
   });
 
   const syntheticRows = await prisma.macroIndicator.findMany({
-    where: { seriesId: { startsWith: "CODECHROMA_" } },
     distinct: ["seriesId"],
     orderBy: { seriesId: "asc" },
     select: { seriesId: true, name: true },

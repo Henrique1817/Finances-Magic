@@ -35,6 +35,30 @@ function sanitizeOAuthFrontendRedirect(raw: unknown): string {
   return url.toString();
 }
 
+function buildFrontendRedirectWithError(frontendUrl: string, message: string): string {
+  const url = new URL(frontendUrl);
+  url.searchParams.set("error", message);
+  return url.toString();
+}
+
+function isLikelyEmailConflictMessage(raw: string): boolean {
+  const msg = raw.toLowerCase();
+  return (
+    msg.includes("already") ||
+    msg.includes("already registered") ||
+    msg.includes("already exists") ||
+    msg.includes("identity is already linked") ||
+    msg.includes("email") && msg.includes("exists")
+  );
+}
+
+function normalizeOAuthErrorMessage(raw: string): string {
+  if (isLikelyEmailConflictMessage(raw)) {
+    return "Este e-mail já está associado a uma conta com outro método de autenticação. Entre com e-mail e senha para continuar.";
+  }
+  return raw;
+}
+
 export async function authLogin(req: Request, res: Response): Promise<void> {
   const body = req.validatedBody as { email: string; password: string };
   const { data, error } = await supabaseAnon.auth.signInWithPassword({
@@ -151,7 +175,9 @@ export async function authOAuthGoogleStart(req: Request, res: Response): Promise
   });
 
   if (error || !data.url) {
-    sendError(res, 502, error?.message ?? "Não foi possível iniciar o login com Google.");
+    const rawMsg = error?.message ?? "Não foi possível iniciar o login com Google.";
+    const safeMsg = normalizeOAuthErrorMessage(rawMsg);
+    res.redirect(302, buildFrontendRedirectWithError(nextUrl, safeMsg));
     return;
   }
 
@@ -169,16 +195,14 @@ export async function authOAuthCallback(req: Request, res: Response): Promise<vo
 
   if (errDesc != null && String(errDesc).length > 0) {
     const raw = decodeURIComponent(String(errDesc).replace(/\+/g, " "));
-    res.redirect(302, `${frontend}?error=${encodeURIComponent(raw)}`);
+    const safeMsg = normalizeOAuthErrorMessage(raw);
+    res.redirect(302, buildFrontendRedirectWithError(frontend, safeMsg));
     return;
   }
 
   const code = req.query.code;
   if (typeof code !== "string" || !code) {
-    res.redirect(
-      302,
-      `${frontend}?error=${encodeURIComponent("Código OAuth em falta. Volte a tentar.")}`,
-    );
+    res.redirect(302, buildFrontendRedirectWithError(frontend, "Código OAuth em falta. Volte a tentar."));
     return;
   }
 
@@ -186,10 +210,9 @@ export async function authOAuthCallback(req: Request, res: Response): Promise<vo
   const { data, error } = await supabase.auth.exchangeCodeForSession(code);
 
   if (error || !data.session) {
-    res.redirect(
-      302,
-      `${frontend}?error=${encodeURIComponent(error?.message ?? "Falha ao concluir o login com Google.")}`,
-    );
+    const rawMsg = error?.message ?? "Falha ao concluir o login com Google.";
+    const safeMsg = normalizeOAuthErrorMessage(rawMsg);
+    res.redirect(302, buildFrontendRedirectWithError(frontend, safeMsg));
     return;
   }
 
