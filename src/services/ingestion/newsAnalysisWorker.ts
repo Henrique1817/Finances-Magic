@@ -116,6 +116,17 @@ type NewsApiArticle = {
   publishedAt?: string | null;
 };
 
+function toValidDate(value: unknown, fallback = new Date()): Date {
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? fallback : value;
+  }
+  if (typeof value === "string" || typeof value === "number") {
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? fallback : parsed;
+  }
+  return fallback;
+}
+
 function toAnalysisArticle(a: NewsApiArticle): NewsArticleForAnalysis | null {
   const title = a.title?.trim();
   if (!title) return null;
@@ -126,7 +137,7 @@ function toAnalysisArticle(a: NewsApiArticle): NewsArticleForAnalysis | null {
     url: a.url?.trim() ?? null,
     externalId: sourceId || null,
     sourceName: a.source?.name?.trim() || "desconhecida",
-    publishedAt: a.publishedAt ? new Date(a.publishedAt) : new Date(),
+    publishedAt: toValidDate(a.publishedAt),
   };
 }
 
@@ -183,6 +194,7 @@ async function persistNewArticles(articles: NewsArticleForAnalysis[]): Promise<n
   for (const a of articles) {
     const href = a.url?.trim();
     if (!href) continue;
+    const publishedAt = toValidDate(a.publishedAt);
 
     const summary = a.description ? a.description.slice(0, 2000) : null;
 
@@ -191,7 +203,7 @@ async function persistNewArticles(articles: NewsArticleForAnalysis[]): Promise<n
       create: {
         title: a.title,
         source: a.sourceName,
-        publishedAt: a.publishedAt,
+        publishedAt,
         url: href,
         description: a.description,
         externalId: a.externalId,
@@ -201,7 +213,7 @@ async function persistNewArticles(articles: NewsArticleForAnalysis[]): Promise<n
       update: {
         title: a.title,
         source: a.sourceName,
-        publishedAt: a.publishedAt,
+        publishedAt,
         description: a.description,
         externalId: a.externalId ?? undefined,
         summary: summary ?? undefined,
@@ -295,7 +307,7 @@ async function fetchGdeltForQuery(q: string): Promise<NewsArticleForAnalysis[]> 
       url,
       externalId: a.domain?.trim() ?? null,
       sourceName: a.domain?.trim() || "gdelt",
-      publishedAt: a.seendate ? new Date(a.seendate) : new Date(),
+      publishedAt: toValidDate(a.seendate),
     });
   }
   return rows;
@@ -346,7 +358,7 @@ async function fetchGoogleNewsRssForQuery(q: string): Promise<NewsArticleForAnal
     const url = firstTagValue(item, "link");
     if (!title || !url) continue;
     const pubDateRaw = firstTagValue(item, "pubDate");
-    const publishedAt = pubDateRaw ? new Date(pubDateRaw) : new Date();
+    const publishedAt = toValidDate(pubDateRaw);
     const sourceName = firstTagValue(item, "source") || "google-news-rss";
     rows.push({
       title,
@@ -354,7 +366,7 @@ async function fetchGoogleNewsRssForQuery(q: string): Promise<NewsArticleForAnal
       url,
       externalId: "google-news-rss",
       sourceName,
-      publishedAt: Number.isNaN(publishedAt.getTime()) ? new Date() : publishedAt,
+      publishedAt,
     });
   }
   return rows;
@@ -414,7 +426,7 @@ export async function runNewsAnalysisIngestion(): Promise<void> {
         }
 
         for (const a of batch) {
-          const key = a.url?.trim() ?? `${a.title}\0${a.publishedAt.toISOString()}`;
+          const key = a.url?.trim() ?? `${a.title}\0${toValidDate(a.publishedAt).toISOString()}`;
           if (!merged.has(key)) merged.set(key, a);
         }
         await recordIngestionItemStatus({
