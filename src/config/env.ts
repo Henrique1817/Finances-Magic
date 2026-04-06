@@ -38,6 +38,12 @@ export const env = {
   geminiModelDailyCaps: parseGeminiDailyCaps(process.env.GEMINI_MODEL_DAILY_CAPS),
   /** Modo teste: evita chamadas ao Gemini e gera resposta simulada localmente. */
   geminiUseMock: process.env.GEMINI_USE_MOCK === "true",
+  /** Geração automática de cenários para ampliar dataset supervisionado (consome cota Gemini). */
+  aiAutoTrainingEnabled: process.env.AI_AUTO_TRAINING_ENABLED === "true",
+  /** Limite diário de cenários automáticos (proteção extra de custo/cota). */
+  aiAutoTrainingMaxScenariosPerDay: parsePositiveInt(process.env.AI_AUTO_TRAINING_MAX_SCENARIOS_PER_DAY, 12),
+  /** Quantos usuários no máximo processar por execução do worker automático. */
+  aiAutoTrainingMaxUsersPerRun: parsePositiveInt(process.env.AI_AUTO_TRAINING_MAX_USERS_PER_RUN, 12),
   /**
    * Regiões de clima (chaves do mapa em `ingestion.ts`), separadas por vírgula.
    * Ex.: SP_CAPITAL,BRASILIA
@@ -119,4 +125,11 @@ function parseGeminiDailyCaps(raw: string | undefined): Record<string, number> {
     out[model] = Math.floor(cap);
   }
   return out;
+}
+
+function parsePositiveInt(raw: string | undefined, fallback: number): number {
+  if (!raw || raw.trim() === "") return fallback;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) return fallback;
+  return Math.floor(n);
 }

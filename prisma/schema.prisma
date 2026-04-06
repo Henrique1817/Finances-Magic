@@ -7,10 +7,6 @@ generator client {
 
 datasource db {
   provider  = "postgresql"
-  /** App runtime (no Supabase: preferir Transaction pooler :6543 + ?pgbouncer=true) */
-  url       = env("DATABASE_URL")
-  /** Migrações Prisma — conexão direta :5432 (obrigatória se `url` usar PgBouncer) */
-  directUrl = env("DIRECT_URL")
 }
 
 /// Usuário autenticado via Supabase Auth (`sub` do JWT = este id)

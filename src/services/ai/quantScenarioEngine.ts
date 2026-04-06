@@ -28,6 +28,16 @@ export type QuantScenarioResult = {
 };
 
 const MAX_LINE_RETURN_ABS = 0.5;
+const CALIBRATION_CACHE_TTL_MS = 10 * 60_000;
+const CALIBRATION_MIN_SAMPLES = 8;
+const CALIBRATION_CLAMP_MIN = 0.4;
+const CALIBRATION_CLAMP_MAX = 1.8;
+const CALIBRATION_EPS = 1e-6;
+
+let calibrationCache: {
+  expiresAt: number;
+  multipliers: Map<string, number>;
+} | null = null;
 
 function mean(a: number[]): number {
   if (a.length === 0) return 0;
@@ -53,6 +63,10 @@ function betaLineVsFactor(lineR: number[], factorR: number[]): number {
   const v = varianceSample(factorR);
   if (v < 1e-14) return 0;
   return covarianceSample(lineR, factorR) / v;
+}
+
+function clamp(n: number, lo: number, hi: number): number {
+  return Math.max(lo, Math.min(hi, n));
 }
 
 /** Expõe `cov/var` sobre retornos já alinhados (testes). */
@@ -201,6 +215,67 @@ async function loadClimateReturns(regionKey: string, maxPoints: number): Promise
   };
 }
 
+type ScenarioParsedFactor = { catalogId?: string; shockPercent?: number };
+type ScenarioResultLike = { parsedFactors?: ScenarioParsedFactor[] };
+
+async function loadFactorCalibrationMultipliers(): Promise<Map<string, number>> {
+  const now = Date.now();
+  if (calibrationCache && calibrationCache.expiresAt > now) {
+    return calibrationCache.multipliers;
+  }
+
+  const rows = await prisma.scenarioOutcome.findMany({
+    where: { status: "evaluated" },
+    orderBy: { evaluatedAt: "desc" },
+    take: 1200,
+    select: {
+      predictedReturn: true,
+      actualReturn: true,
+      scenario: {
+        select: { resultJson: true },
+      },
+    },
+  });
+
+  const sums = new Map<string, { ratioWeightedSum: number; weightSum: number; samples: number }>();
+  for (const row of rows) {
+    const pred = Number(row.predictedReturn);
+    const actual = row.actualReturn === null ? NaN : Number(row.actualReturn);
+    if (!Number.isFinite(pred) || !Number.isFinite(actual) || Math.abs(pred) < CALIBRATION_EPS) continue;
+    const ratio = clamp(actual / pred, -3, 3);
+    const payload = row.scenario.resultJson as ScenarioResultLike;
+    const factors = Array.isArray(payload?.parsedFactors) ? payload.parsedFactors : [];
+    for (const f of factors) {
+      const id = typeof f.catalogId === "string" ? f.catalogId : "";
+      if (!id) continue;
+      const shockAbs = Math.abs(typeof f.shockPercent === "number" ? f.shockPercent : 0);
+      const weight = clamp(shockAbs / 10, 0.2, 3);
+      const cur = sums.get(id) ?? { ratioWeightedSum: 0, weightSum: 0, samples: 0 };
+      cur.ratioWeightedSum += ratio * weight;
+      cur.weightSum += weight;
+      cur.samples += 1;
+      sums.set(id, cur);
+    }
+  }
+
+  const multipliers = new Map<string, number>();
+  for (const [factorId, acc] of sums.entries()) {
+    if (acc.samples < CALIBRATION_MIN_SAMPLES || acc.weightSum <= 0) {
+      multipliers.set(factorId, 1);
+      continue;
+    }
+    const avgRatio = acc.ratioWeightedSum / acc.weightSum;
+    const positiveMultiplier = clamp(Math.abs(avgRatio), CALIBRATION_CLAMP_MIN, CALIBRATION_CLAMP_MAX);
+    multipliers.set(factorId, positiveMultiplier);
+  }
+
+  calibrationCache = {
+    expiresAt: now + CALIBRATION_CACHE_TTL_MS,
+    multipliers,
+  };
+  return multipliers;
+}
+
 /**
  * Estima betas em janela de `WINDOW_DAYS` retornos alinhados e aplica choques percentuais nos fatores.
  * Fatores aceites: `macro:*`, `asset:*` e `climate:*`.
@@ -228,6 +303,7 @@ export async function runQuantScenario(
 
   const prepared: PreparedFactor[] = [];
   const needPoints = WINDOW_DAYS + 2;
+  const factorMultipliers = await loadFactorCalibrationMultipliers();
 
   for (const q of quantFactors) {
     const parsed = parseCatalogId(q.catalogId);
@@ -307,7 +383,8 @@ export async function runQuantScenario(
       const b = betaLineVsFactor(lS, fS);
       betaByFactor[pf.catalogId] = b;
       const shockDec = pf.shockPercent / 100;
-      combined += b * shockDec;
+      const calibrationMultiplier = factorMultipliers.get(pf.catalogId) ?? 1;
+      combined += b * shockDec * calibrationMultiplier;
     }
 
     const capped = Math.max(-MAX_LINE_RETURN_ABS, Math.min(MAX_LINE_RETURN_ABS, combined));
