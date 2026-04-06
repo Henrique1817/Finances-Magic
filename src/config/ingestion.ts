@@ -99,8 +99,11 @@ export const MARKET_WORKER_WORLD_BANK_INDICATORS: WorldBankIndicatorConfig[] = [
 
 /** Intervalo entre chamadas Alpha Vantage (free tier). */
 export const ALPHA_VANTAGE_REQUEST_GAP_MS = 1_500;
+export const BRAPI_REQUEST_GAP_MS = 2_000;
 
 export type ProviderName =
+  | "brapi"
+  | "yfinancePython"
   | "alphaVantage"
   | "yahooFinance"
   | "stooq"
@@ -121,6 +124,20 @@ export type ProviderBudget = {
 
 /** Budgets conservadores para operar em planos gratuitos. */
 export const INGESTION_PROVIDER_BUDGETS: Record<ProviderName, ProviderBudget> = {
+  brapi: {
+    requestsPerMinute: 10,
+    requestsPerDay: 650,
+    cooldownOn429Ms: 30 * 60_000,
+    circuitBreakerFailures: 3,
+    circuitBreakerMs: 30 * 60_000,
+  },
+  yfinancePython: {
+    requestsPerMinute: 20,
+    requestsPerDay: 1_500,
+    cooldownOn429Ms: 10 * 60_000,
+    circuitBreakerFailures: 4,
+    circuitBreakerMs: 20 * 60_000,
+  },
   alphaVantage: {
     requestsPerMinute: 5,
     requestsPerDay: 25,

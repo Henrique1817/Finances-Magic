@@ -4,6 +4,7 @@ import { env } from "../config/env";
 import { sendError, sendSuccess } from "../lib/http";
 import { supabaseAnon } from "../lib/supabaseAnonClient";
 import { createSupabaseServerClient } from "../lib/supabaseServerCookies";
+import { ensureUserWallet } from "../services/walletService";
 
 const OAUTH_FRONTEND_COOKIE = "cc_oauth_frontend";
 const OAUTH_COOKIE_MAX_AGE_MS = 600_000;
@@ -217,6 +218,8 @@ export async function authOAuthCallback(req: Request, res: Response): Promise<vo
   }
 
   const s = data.session;
+  await ensureUserWallet(s.user.id, s.user.email ?? undefined);
+
   const hash = new URLSearchParams({
     access_token: s.access_token,
     refresh_token: s.refresh_token,

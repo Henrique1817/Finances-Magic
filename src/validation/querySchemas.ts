@@ -49,3 +49,23 @@ export const assetSearchQuerySchema = z.object({
 });
 
 export type AssetSearchQuery = z.infer<typeof assetSearchQuerySchema>;
+
+/** Último preço: `symbol` (um) ou `symbols` (lista separada por vírgula). */
+export const assetLastPriceQuerySchema = z
+  .object({
+    symbol: z.preprocess((val) => {
+      const v = firstQueryValue(val);
+      if (v === undefined || v === null || v === "") return undefined;
+      return String(v).trim();
+    }, z.string().min(1).max(32).optional()),
+    symbols: z.preprocess((val) => {
+      const v = firstQueryValue(val);
+      if (v === undefined || v === null || v === "") return undefined;
+      return String(v).trim();
+    }, z.string().min(1).max(2000).optional()),
+  })
+  .refine((d) => Boolean(d.symbol) || Boolean(d.symbols), {
+    message: "Informe symbol ou symbols.",
+  });
+
+export type AssetLastPriceQuery = z.infer<typeof assetLastPriceQuerySchema>;

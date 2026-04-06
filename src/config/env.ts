@@ -25,6 +25,8 @@ export const env = {
   supabaseUrl: required("SUPABASE_URL"),
   supabaseAnonKey: required("SUPABASE_ANON_KEY"),
   alphaVantageApiKey: optional("ALPHA_VANTAGE_API_KEY"),
+  brapiToken: optional("BRAPI_TOKEN"),
+  yfinancePythonExecutable: process.env.YFINANCE_PYTHON_EXECUTABLE?.trim() || "python",
   fredApiKey: optional("FRED_API_KEY"),
   newsApiKey: optional("NEWS_API_KEY"),
   /** Google Gemini — cenários IA (opcional; sem chave o endpoint retorna erro claro). */

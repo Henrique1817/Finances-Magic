@@ -5,6 +5,7 @@ import {
   addWalletAssetRow,
   deleteWalletAssetRow,
   ensureUserWallet,
+  getWalletMarketForUser,
   getPortfolioForUser,
 } from "../services/walletService";
 import type { WalletAssetCreateBody } from "../validation/bodySchemas";
@@ -30,6 +31,15 @@ export const postWalletAssetHandler = asyncHandler(
       assetId: body.assetId,
     });
     sendSuccess(res, { asset }, 201);
+  },
+);
+
+export const getWalletMarketHandler = asyncHandler(
+  async (req: Request, res: Response, _next: NextFunction) => {
+    const userId = req.user!.id;
+    await ensureUserWallet(userId, req.user!.email);
+    const market = await getWalletMarketForUser(userId, 90);
+    sendSuccess(res, { market, windowDays: 90 });
   },
 );
 

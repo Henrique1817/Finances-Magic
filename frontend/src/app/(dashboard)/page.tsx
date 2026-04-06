@@ -12,9 +12,8 @@ export default function DashboardPage() {
           Simulador global de risco
         </h2>
         <p className="mt-4 max-w-2xl text-base leading-relaxed text-slate-200 md:text-lg">
-          Monitore a carteira local, com persistência no navegador. Na próxima
-          fase, o painel de stress test usará estes dados para projetar
-          patrimônio sob cenários macro.
+          A carteira mostra o último preço ingerido por ativo e o valor de mercado (preço ×
+          quantidade). O simulador usa o mesmo total para cenários e stress test.
         </p>
       </section>
 

@@ -1,6 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import {
+  CartesianGrid,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 import { useWalletStore } from "@/store/useWalletStore";
 import { useAddAssetModal } from "@/contexts/AddAssetModalContext";
 import { TotalValueCounter } from "./TotalValueCounter";
@@ -18,11 +27,41 @@ export function WalletPanel() {
   const walletError = useWalletStore((s) => s.walletError);
   const portfolio = useWalletStore((s) => s.portfolio);
   const removeAsset = useWalletStore((s) => s.removeAsset);
+  const marketRows = useWalletStore((s) => s.marketLines);
+  const marketLoading = useWalletStore((s) => s.marketLoading);
+  const marketError = useWalletStore((s) => s.marketError);
+  const fetchMarket = useWalletStore((s) => s.fetchMarket);
+  const total = useWalletStore((s) => s.getTotalValue());
   const { openAddAsset } = useAddAssetModal();
   const [removingId, setRemovingId] = useState<string | null>(null);
+  const windowDays = 90;
   const listReady = walletReady && !walletLoading;
 
-  const total = portfolio.reduce((sum, a) => sum + a.valorInvestido, 0);
+  const portfolioFingerprint = useMemo(
+    () => portfolio.map((p) => p.id).join("|"),
+    [portfolio],
+  );
+  const marketByWalletId = useMemo(
+    () => new Map(marketRows.map((r) => [r.id, r])),
+    [marketRows],
+  );
+  const missingDataCount = useMemo(
+    () => marketRows.filter((r) => r.missingReason !== null).length,
+    [marketRows],
+  );
+
+  useEffect(() => {
+    if (!listReady) return;
+    void fetchMarket();
+  }, [listReady, portfolioFingerprint, fetchMarket]);
+
+  function formatPrice(value: number | null) {
+    if (value === null) return "Sem preço";
+    return value.toLocaleString("pt-BR", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+  }
 
   return (
     <section
@@ -42,13 +81,13 @@ export function WalletPanel() {
             Sua carteira
           </p>
           <p className="mt-2 max-w-xl text-base text-slate-200">
-            Posições sincronizadas com a conta autenticada. Use o total como base
-            nos cenários do simulador.
+            Posições sincronizadas com a conta autenticada. O total usa preço de mercado
+            (último fechamento ingerido) × quantidade quando disponível.
           </p>
         </div>
         <div className="flex flex-col items-start gap-3 sm:items-end">
           <p className="text-xs uppercase tracking-wider text-slate-300">
-            Valor total
+            Valor total (mercado)
           </p>
           <TotalValueCounter
             value={total}
@@ -79,11 +118,14 @@ export function WalletPanel() {
           <thead>
             <tr className="border-b border-white/10 bg-white/[0.03] text-xs uppercase tracking-wider text-slate-300">
               <th className="px-4 py-3 font-medium">Ativo</th>
+              <th className="px-4 py-3 font-medium">Empresa</th>
               <th className="px-4 py-3 font-medium">Setor</th>
               <th className="hidden px-4 py-3 font-medium sm:table-cell">
                 Qtd
               </th>
-              <th className="px-4 py-3 font-medium">Valor (R$)</th>
+              <th className="px-4 py-3 font-medium">Custo (R$)</th>
+              <th className="px-4 py-3 font-medium">Valor mercado</th>
+              <th className="px-4 py-3 font-medium">Preço atual</th>
               <th className="w-24 px-4 py-3 font-medium" />
             </tr>
           </thead>
@@ -91,7 +133,7 @@ export function WalletPanel() {
             {!listReady ? (
               <tr>
                 <td
-                  colSpan={5}
+                  colSpan={8}
                   className="px-4 py-10 text-center text-slate-300"
                 >
                   Carregando carteira…
@@ -100,7 +142,7 @@ export function WalletPanel() {
             ) : portfolio.length === 0 ? (
               <tr>
                 <td
-                  colSpan={5}
+                  colSpan={8}
                   className="px-4 py-10 text-center text-slate-300"
                 >
                   Nenhum ativo. Adicione uma posição para começar.
@@ -113,6 +155,18 @@ export function WalletPanel() {
                   className="border-b border-white/5 transition hover:bg-white/[0.02]"
                 >
                   <td className="px-4 py-3 font-medium text-white">{a.nome}</td>
+                  <td className="px-4 py-3 text-slate-100">
+                    {marketByWalletId.get(a.id)?.assetSymbol ? (
+                      <span>
+                        {marketByWalletId.get(a.id)?.assetName ?? a.nome}{" "}
+                        <span className="font-mono text-cyan-200">
+                          ({marketByWalletId.get(a.id)?.assetSymbol})
+                        </span>
+                      </span>
+                    ) : (
+                      <span className="text-amber-200/85">Sem vínculo com catálogo</span>
+                    )}
+                  </td>
                   <td className="px-4 py-3">
                     <span
                       className={`inline-flex rounded-lg border px-2 py-0.5 text-xs font-medium ${sectorStyles[a.setor] ?? "border-white/20 bg-white/5"}`}
@@ -125,6 +179,16 @@ export function WalletPanel() {
                   </td>
                   <td className="px-4 py-3 font-mono text-slate-200">
                     {formatBRL(a.valorInvestido)}
+                  </td>
+                  <td className="px-4 py-3 font-mono text-slate-100">
+                    {(() => {
+                      const px = marketByWalletId.get(a.id)?.currentPrice;
+                      if (px == null) return "—";
+                      return formatBRL(px * a.quantidade);
+                    })()}
+                  </td>
+                  <td className="px-4 py-3 font-mono text-slate-100">
+                    {formatPrice(marketByWalletId.get(a.id)?.currentPrice ?? null)}
                   </td>
                   <td className="px-4 py-3">
                     <button
@@ -150,6 +214,107 @@ export function WalletPanel() {
             )}
           </tbody>
         </table>
+      </div>
+
+      <div className="mt-8">
+        <div className="mb-3 flex items-end justify-between gap-3">
+          <h3 className="text-lg font-semibold text-white">Histórico por ativo</h3>
+          <p className="text-xs text-slate-300">Janela: últimos {windowDays} dias</p>
+        </div>
+
+        {marketError ? (
+          <p className="mb-4 rounded-xl border border-rose-500/30 bg-rose-950/25 px-4 py-3 text-sm text-rose-200">
+            {marketError}
+          </p>
+        ) : null}
+
+        {listReady && !marketLoading && marketRows.length > 0 && missingDataCount > 0 ? (
+          <p className="mb-4 rounded-xl border border-amber-400/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+            {missingDataCount} ativo(s) sem preço atual e/ou histórico suficiente. Eu destaquei isso
+            em cada card abaixo.
+          </p>
+        ) : null}
+
+        {marketLoading ? (
+          <div className="rounded-xl border border-white/10 bg-slate-950/40 px-4 py-10 text-center text-slate-300">
+            Carregando preços e histórico dos ativos...
+          </div>
+        ) : marketRows.length === 0 ? (
+          <div className="rounded-xl border border-white/10 bg-slate-950/40 px-4 py-10 text-center text-slate-300">
+            Sem dados de mercado para exibir.
+          </div>
+        ) : (
+          <div className="grid gap-4 md:grid-cols-2">
+            {marketRows.map((row) => (
+              <article
+                key={row.id}
+                className="rounded-xl border border-white/10 bg-slate-950/50 p-4"
+              >
+                <div className="mb-3 flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-white">
+                      {row.assetName ?? row.nome}
+                      {row.assetSymbol ? (
+                        <span className="ml-2 font-mono text-cyan-200">({row.assetSymbol})</span>
+                      ) : null}
+                    </p>
+                    <p className="text-xs text-slate-300">
+                      {row.currentPriceDate
+                        ? `Preço atual (${row.currentPriceDate}): ${formatPrice(row.currentPrice)}`
+                        : "Preço atual indisponível"}
+                    </p>
+                  </div>
+                  <span
+                    className={`rounded-md px-2 py-1 text-[11px] ${
+                      row.missingReason
+                        ? "bg-amber-500/15 text-amber-100"
+                        : "bg-emerald-500/15 text-emerald-200"
+                    }`}
+                  >
+                    {row.missingReason ? "Dados incompletos" : "Dados OK"}
+                  </span>
+                </div>
+
+                {row.history.length > 1 ? (
+                  <div className="h-44 w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={row.history} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.7} />
+                        <XAxis dataKey="date" tick={{ fill: "#cbd5e1", fontSize: 11 }} hide />
+                        <YAxis
+                          tick={{ fill: "#cbd5e1", fontSize: 11 }}
+                          width={64}
+                          tickFormatter={(v) => Number(v).toFixed(2)}
+                        />
+                        <Tooltip
+                          contentStyle={{
+                            background: "#0f172a",
+                            border: "1px solid rgba(148,163,184,0.25)",
+                            borderRadius: 12,
+                          }}
+                          labelStyle={{ color: "#e2e8f0" }}
+                          formatter={(value: number) => [formatPrice(value), "Preço"]}
+                        />
+                        <Line
+                          type="monotone"
+                          dataKey="close"
+                          stroke="#22d3ee"
+                          strokeWidth={2.2}
+                          dot={false}
+                          activeDot={{ r: 3 }}
+                        />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                ) : (
+                  <div className="rounded-lg border border-amber-400/30 bg-amber-500/10 px-3 py-3 text-sm text-amber-100">
+                    {row.missingReason ?? "Sem histórico suficiente para montar gráfico."}
+                  </div>
+                )}
+              </article>
+            ))}
+          </div>
+        )}
       </div>
     </section>
   );

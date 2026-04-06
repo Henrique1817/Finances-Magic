@@ -12,6 +12,29 @@ type WalletPostResponse = {
   data: { asset: CarteiraAtivo };
 };
 
+export type WalletMarketPoint = {
+  date: string;
+  close: number;
+};
+
+export type WalletMarketLine = CarteiraAtivo & {
+  assetId: string | null;
+  assetSymbol: string | null;
+  assetName: string | null;
+  currentPrice: number | null;
+  currentPriceDate: string | null;
+  history: WalletMarketPoint[];
+  missingReason: string | null;
+};
+
+type WalletMarketGetResponse = {
+  success: true;
+  data: {
+    market: WalletMarketLine[];
+    windowDays: number;
+  };
+};
+
 function toError(e: unknown): Error {
   if (isAxiosError(e)) {
     return new Error(messageFromApiError(e));
@@ -51,6 +74,25 @@ export async function postWalletAssetApi(body: {
 export async function deleteWalletAssetApi(lineId: string): Promise<void> {
   try {
     await api.delete(`/api/v1/wallet/assets/${lineId}`);
+  } catch (e) {
+    throw toError(e);
+  }
+}
+
+export async function fetchWalletMarketFromApi(): Promise<{
+  market: WalletMarketLine[];
+  windowDays: number;
+}> {
+  try {
+    const { data } = await api.get<WalletMarketGetResponse>("/api/v1/wallet/market");
+    if (!data.success) throw new Error("Resposta inválida da API.");
+    return {
+      market: data.data.market.map((row) => ({
+        ...row,
+        setor: row.setor as SetorAtivo,
+      })),
+      windowDays: data.data.windowDays,
+    };
   } catch (e) {
     throw toError(e);
   }

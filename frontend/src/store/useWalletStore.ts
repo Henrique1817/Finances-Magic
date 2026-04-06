@@ -2,7 +2,9 @@ import { create } from "zustand";
 import {
   deleteWalletAssetApi,
   fetchWalletFromApi,
+  fetchWalletMarketFromApi,
   postWalletAssetApi,
+  type WalletMarketLine,
 } from "@/lib/walletApi";
 
 export type SetorAtivo = "Tech" | "Mineração" | "Energia";
@@ -22,12 +24,20 @@ type WalletState = {
   /** `true` após a primeira tentativa de `fetchWallet` (sucesso ou erro). */
   walletReady: boolean;
   walletError: string | null;
+  /** Preços e histórico da carteira (último fechamento + série). */
+  marketLines: WalletMarketLine[];
+  marketLoading: boolean;
+  marketError: string | null;
   fetchWallet: () => Promise<void>;
+  fetchMarket: () => Promise<void>;
   saveAssetToDb: (
     input: Omit<CarteiraAtivo, "id"> & { id?: string; assetId?: string | null },
   ) => Promise<void>;
   removeAsset: (id: string) => Promise<void>;
-  /** Soma de `valorInvestido` de todas as posições. */
+  /**
+   * Valor total da carteira: para cada posição, `quantidade × preço de mercado` quando houver
+   * último preço; caso contrário usa `valorInvestido` (custo informado).
+   */
   getTotalValue: () => number;
   resetWallet: () => void;
 };
@@ -37,6 +47,9 @@ export const useWalletStore = create<WalletState>()((set, get) => ({
   walletLoading: false,
   walletReady: false,
   walletError: null,
+  marketLines: [],
+  marketLoading: false,
+  marketError: null,
 
   resetWallet: () =>
     set({
@@ -44,6 +57,9 @@ export const useWalletStore = create<WalletState>()((set, get) => ({
       walletLoading: false,
       walletReady: false,
       walletError: null,
+      marketLines: [],
+      marketLoading: false,
+      marketError: null,
     }),
 
   fetchWallet: async () => {
@@ -73,6 +89,7 @@ export const useWalletStore = create<WalletState>()((set, get) => ({
       assetId: assetId ?? undefined,
     });
     set((s) => ({ portfolio: [...s.portfolio, row] }));
+    void get().fetchMarket();
   },
 
   removeAsset: async (id) => {
@@ -82,6 +99,7 @@ export const useWalletStore = create<WalletState>()((set, get) => ({
       set((s) => ({
         portfolio: s.portfolio.filter((a) => a.id !== id),
       }));
+      void get().fetchMarket();
     } catch (e) {
       const message = e instanceof Error ? e.message : "Falha ao remover a posição.";
       set({ walletError: message });
@@ -89,6 +107,32 @@ export const useWalletStore = create<WalletState>()((set, get) => ({
     }
   },
 
-  getTotalValue: () =>
-    get().portfolio.reduce((sum, a) => sum + a.valorInvestido, 0),
+  fetchMarket: async () => {
+    const { walletReady, walletLoading, portfolio } = get();
+    if (!walletReady || walletLoading) return;
+    if (portfolio.length === 0) {
+      set({ marketLines: [], marketLoading: false, marketError: null });
+      return;
+    }
+    set({ marketLoading: true, marketError: null });
+    try {
+      const data = await fetchWalletMarketFromApi();
+      set({ marketLines: data.market, marketLoading: false });
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Falha ao carregar preços.";
+      set({ marketLines: [], marketError: message, marketLoading: false });
+    }
+  },
+
+  getTotalValue: () => {
+    const { portfolio, marketLines } = get();
+    const map = new Map(marketLines.map((m) => [m.id, m]));
+    return portfolio.reduce((sum, p) => {
+      const m = map.get(p.id);
+      if (m?.currentPrice != null && Number.isFinite(m.currentPrice)) {
+        return sum + p.quantidade * m.currentPrice;
+      }
+      return sum + p.valorInvestido;
+    }, 0);
+  },
 }));

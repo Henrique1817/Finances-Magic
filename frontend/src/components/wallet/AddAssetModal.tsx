@@ -8,6 +8,14 @@ import {
 import { getAccessToken } from "@/lib/authSession";
 import { parseLocaleNumber } from "@/lib/parseLocaleNumber";
 import { AssetLiveSearch, type CatalogAsset } from "@/components/AssetLiveSearch";
+import { fetchAssetLastPrice } from "@/lib/assetsApi";
+
+function formatBrDecimalInput(n: number): string {
+  return new Intl.NumberFormat("pt-BR", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 8,
+  }).format(n);
+}
 
 const SETORES: SetorAtivo[] = ["Tech", "Mineração", "Energia"];
 
@@ -34,6 +42,9 @@ export function AddAssetModal({ open, onOpenChange }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [selectedCatalogAssetId, setSelectedCatalogAssetId] = useState<string | null>(null);
+  /** Última cotação unitária (R$) vinda do servidor ao escolher do catálogo. */
+  const [lastUnitPrice, setLastUnitPrice] = useState<number | null>(null);
+  const [priceLookupLoading, setPriceLookupLoading] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -59,6 +70,7 @@ export function AddAssetModal({ open, onOpenChange }: Props) {
     setQtd("");
     setError(null);
     setSelectedCatalogAssetId(null);
+    setLastUnitPrice(null);
   }
 
   async function handleSubmit(e: FormEvent) {
@@ -151,11 +163,31 @@ export function AddAssetModal({ open, onOpenChange }: Props) {
                 setNome(`${a.symbol} — ${a.name}`);
                 setSetor(mapCatalogCategoryToSetor(a.category));
                 setSelectedCatalogAssetId(a.id);
+                setLastUnitPrice(null);
+                setPriceLookupLoading(true);
+                void (async () => {
+                  try {
+                    const p = await fetchAssetLastPrice(a.symbol);
+                    if (p) {
+                      setLastUnitPrice(p.close);
+                      const qn = parseLocaleNumber(qtd);
+                      const eff = Number.isFinite(qn) && qn > 0 ? qn : 1;
+                      setValor(formatBrDecimalInput(p.close * eff));
+                    } else {
+                      setLastUnitPrice(null);
+                    }
+                  } catch {
+                    setLastUnitPrice(null);
+                  } finally {
+                    setPriceLookupLoading(false);
+                  }
+                })();
               }}
               placeholder="Ex.: NVDA, Apple, ouro…"
             />
             <p className="mt-1 text-[11px] text-slate-600">
               Opcional: preenche o nome e o setor; liga a posição ao ativo no simulador.
+              {priceLookupLoading ? " A buscar último preço…" : null}
             </p>
           </div>
 
@@ -172,6 +204,7 @@ export function AddAssetModal({ open, onOpenChange }: Props) {
               onChange={(e) => {
                 setNome(e.target.value);
                 setSelectedCatalogAssetId(null);
+                setLastUnitPrice(null);
               }}
               placeholder="Ex.: PETR4, BTC, fundo X"
               className="w-full rounded-xl border border-white/10 bg-slate-950/50 px-4 py-2.5 text-sm text-white outline-none ring-cyan-400/40 placeholder:text-slate-600 focus:border-cyan-400/40 focus:ring-2"
@@ -205,7 +238,7 @@ export function AddAssetModal({ open, onOpenChange }: Props) {
                 htmlFor={`${formId}-valor`}
                 className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-slate-400"
               >
-                Valor investido (R$)
+                Valor total (R$)
               </label>
               <input
                 id={`${formId}-valor`}
@@ -216,7 +249,8 @@ export function AddAssetModal({ open, onOpenChange }: Props) {
                 className="w-full rounded-xl border border-white/10 bg-slate-950/50 px-4 py-2.5 text-sm text-white outline-none ring-cyan-400/40 placeholder:text-slate-600 focus:border-cyan-400/40 focus:ring-2"
               />
               <p className="mt-1 text-[11px] text-slate-600">
-                Aceita formato brasileiro (ex.: 1.500,00).
+                Com ativo do catálogo: preço de mercado × quantidade. Aceita formato brasileiro (ex.:
+                1.500,00).
               </p>
             </div>
             <div>
@@ -230,7 +264,16 @@ export function AddAssetModal({ open, onOpenChange }: Props) {
                 id={`${formId}-qtd`}
                 inputMode="decimal"
                 value={qtd}
-                onChange={(e) => setQtd(e.target.value)}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  setQtd(next);
+                  if (lastUnitPrice != null) {
+                    const qn = parseLocaleNumber(next);
+                    if (Number.isFinite(qn) && qn > 0) {
+                      setValor(formatBrDecimalInput(lastUnitPrice * qn));
+                    }
+                  }
+                }}
                 placeholder="1"
                 className="w-full rounded-xl border border-white/10 bg-slate-950/50 px-4 py-2.5 text-sm text-white outline-none ring-cyan-400/40 placeholder:text-slate-600 focus:border-cyan-400/40 focus:ring-2"
               />

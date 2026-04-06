@@ -94,8 +94,10 @@ export function SimulatorWorkspace() {
   const walletReady = useWalletStore((s) => s.walletReady);
   const listReady = walletReady && !walletLoading;
   const portfolio = useWalletStore((s) => s.portfolio);
-  const portfolioValue = useMemo(
-    () => portfolio.reduce((sum, a) => sum + a.valorInvestido, 0),
+  const fetchMarket = useWalletStore((s) => s.fetchMarket);
+  const portfolioValue = useWalletStore((s) => s.getTotalValue());
+  const portfolioFingerprint = useMemo(
+    () => portfolio.map((p) => p.id).join("|"),
     [portfolio],
   );
 
@@ -145,6 +147,11 @@ export function SimulatorWorkspace() {
   useEffect(() => {
     void refreshScenariosList();
   }, [refreshScenariosList]);
+
+  useEffect(() => {
+    if (!listReady) return;
+    void fetchMarket();
+  }, [listReady, fetchMarket, portfolioFingerprint]);
 
   const displayResponse = detailLoading ? null : activeResponse;
 
@@ -251,7 +258,7 @@ export function SimulatorWorkspace() {
   async function handleStressRun() {
     setStressError(null);
     if (portfolioValue <= 0) {
-      setStressError("Inclua posições com valor investido na carteira.");
+      setStressError("Inclua posições na carteira (com preço de mercado ou valor informado).");
       return;
     }
     setLoadingStress(true);
@@ -275,7 +282,7 @@ export function SimulatorWorkspace() {
   const barHeights = heightsFromQuant(displayResponse?.quant ?? null);
 
   return (
-    <div className="flex w-full flex-1 min-h-0 bg-slate-950 text-slate-100">
+    <div className="flex w-full min-h-0 flex-1 bg-[#020617] text-slate-100">
       {/* Rail cenários — mobile: drawer; desktop: coluna colapsável */}
       <aside
         className={`fixed inset-y-0 left-0 z-30 flex w-[min(86vw,280px)] flex-col border-r border-white/10 bg-slate-950/95 backdrop-blur-xl transition-transform duration-300 md:static md:z-20 md:bg-slate-950/90 ${
@@ -384,8 +391,9 @@ export function SimulatorWorkspace() {
         />
       ) : null}
 
-      <div ref={mainRef} className="relative flex min-w-0 flex-1 flex-col min-h-0">
+      <div ref={mainRef} className="relative flex min-h-0 min-w-0 flex-1 flex-col">
         <SimulatorAtmosphere barHeights={barHeights} />
+        <div className="pointer-events-none absolute inset-0 z-[1] bg-[radial-gradient(circle_at_50%_10%,rgba(15,23,42,0)_0%,rgba(2,6,23,0.65)_48%,rgba(2,6,23,0.95)_100%)]" />
 
         <div className="relative z-10 flex min-h-0 flex-1 flex-col overflow-y-auto">
           <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col px-4 pb-28 pt-8 md:px-8 md:pb-32 md:pt-12">
@@ -405,7 +413,7 @@ export function SimulatorWorkspace() {
             <p className="text-center text-sm font-semibold uppercase tracking-[0.25em] text-slate-300">
               Simulação inteligente
             </p>
-            <h2 className="mt-3 text-center text-2xl font-semibold text-white md:text-3xl">
+            <h2 className="mt-3 text-center text-3xl font-semibold text-white md:text-4xl">
               Olá. Que cenário quer testar?
             </h2>
             <p className="mx-auto mt-2 max-w-lg text-center text-base text-slate-200">
@@ -420,7 +428,7 @@ export function SimulatorWorkspace() {
                   key={c}
                   type="button"
                   onClick={() => setDraftMessage(c)}
-                  className="rounded-full border border-white/10 bg-slate-900/60 px-4 py-2 text-sm text-slate-100 transition hover:border-cyan-500/30 hover:text-white"
+                  className="rounded-full border border-white/15 bg-slate-900/75 px-4 py-2 text-sm text-slate-100 shadow-[0_8px_20px_rgba(2,6,23,0.45)] transition hover:-translate-y-0.5 hover:border-cyan-400/40 hover:text-white"
                 >
                   {c}
                 </button>
@@ -447,7 +455,7 @@ export function SimulatorWorkspace() {
               ) : null}
 
               {!detailLoading && displayResponse ? (
-                <div className="rounded-2xl border border-white/10 bg-slate-950/60 p-5 backdrop-blur-md">
+                <div className="rounded-2xl border border-white/15 bg-slate-950/70 p-5 shadow-[0_16px_50px_rgba(2,6,23,0.7)] backdrop-blur-xl">
                   <h3 className="text-sm font-semibold uppercase tracking-wider text-slate-300">
                     Leitura IA
                   </h3>
@@ -521,14 +529,14 @@ export function SimulatorWorkspace() {
           </div>
 
           {/* Input bar — estilo Gemini */}
-          <div className="sticky bottom-0 z-20 border-t border-white/10 bg-slate-950/85 px-4 py-4 backdrop-blur-xl md:px-8">
+          <div className="sticky bottom-0 z-20 border-t border-white/10 bg-slate-950/88 px-4 py-4 backdrop-blur-xl md:px-8">
             <div className="mx-auto max-w-3xl space-y-3">
               {iaError ? (
                 <p className="rounded-lg border border-rose-500/30 bg-rose-950/40 px-3 py-2 text-xs text-rose-200">
                   {iaError}
                 </p>
               ) : null}
-              <div className="flex items-end gap-2 rounded-2xl border border-white/15 bg-slate-900/80 p-2 shadow-[0_0_40px_rgba(34,211,238,0.06)]">
+              <div className="flex items-end gap-2 rounded-2xl border border-white/15 bg-slate-900/85 p-2 shadow-[0_12px_40px_rgba(2,6,23,0.6),0_0_30px_rgba(34,211,238,0.08)]">
                 <textarea
                   value={draftMessage}
                   onChange={(e) => setDraftMessage(e.target.value)}
@@ -553,7 +561,7 @@ export function SimulatorWorkspace() {
               </div>
               <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-300">
                 <span>
-                  Carteira:{" "}
+                  Carteira (mercado):{" "}
                   <span className="font-mono text-slate-100">
                     {!listReady ? "…" : formatBRL(portfolioValue)}
                   </span>

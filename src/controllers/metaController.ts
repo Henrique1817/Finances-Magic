@@ -47,6 +47,15 @@ export function getApiV1Root(_req: Request, res: Response): void {
           path: `/api/${API_ROUTE_VERSION}/assets/search`,
           query: { q: "mínimo 2 caracteres; busca em symbol e name" },
         },
+        lastPrice: {
+          method: "GET",
+          path: `/api/${API_ROUTE_VERSION}/assets/last-price`,
+          query: {
+            symbol: "ticker único (opcional se usar symbols)",
+            symbols: "lista separada por vírgula (opcional se usar symbol)",
+          },
+          note: "Último fechamento em asset_price_history (ingestão).",
+        },
       },
       dashboard: {
         currentStatus: {

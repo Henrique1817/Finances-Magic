@@ -1,7 +1,11 @@
 import { Prisma, type AssetType } from "@prisma/client";
 import axios, { isAxiosError } from "axios";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import { resolve } from "node:path";
 import {
   ALPHA_VANTAGE_REQUEST_GAP_MS,
+  BRAPI_REQUEST_GAP_MS,
   MARKET_WORKER_ASSETS,
   MARKET_WORKER_FRED_SERIES,
   MARKET_WORKER_WORLD_BANK_INDICATORS,
@@ -22,19 +26,31 @@ import {
 const log = logger.child({ worker: "marketData" });
 
 const ALPHA_URL = "https://www.alphavantage.co/query";
+const BRAPI_URL = "https://brapi.dev/api/quote";
 const FRED_OBS_URL = "https://api.stlouisfed.org/fred/series/observations";
 const WORLD_BANK_INDICATOR_URL = "https://api.worldbank.org/v2/country";
 const YAHOO_CHART_URL = "https://query1.finance.yahoo.com/v8/finance/chart";
 const STOOQ_DAILY_CSV_URL = "https://stooq.com/q/d/l/";
+const YFINANCE_SCRIPT_PATH = resolve(process.cwd(), "src", "scripts", "fetch_yfinance.py");
+const execFileAsync = promisify(execFile);
 
 type TimeSeriesDaily = Record<string, Record<string, string>>;
+type PriceRow = { date: string; close: string };
+type BrapiResult = {
+  historicalDataPrice?: Array<{ date?: number; close?: number }>;
+  symbol?: string;
+};
+
+function normalizeBrapiSymbol(symbol: string): string {
+  return symbol.trim().toUpperCase().replace(/\.SA$/i, "");
+}
 
 function parseTradeDate(yyyyMmDd: string): Date {
   return new Date(`${yyyyMmDd}T12:00:00.000Z`);
 }
 
 /** Todas as datas com fechamento válido, mais recente primeiro. */
-function allClosesFromDailySeries(series: TimeSeriesDaily | undefined): { date: string; close: string }[] {
+function allClosesFromDailySeries(series: TimeSeriesDaily | undefined): PriceRow[] {
   if (!series || typeof series !== "object") return [];
   const dates = Object.keys(series).sort((a, b) => b.localeCompare(a));
   const out: { date: string; close: string }[] = [];
@@ -66,7 +82,57 @@ function logRateLimit(provider: string, context: string, status?: number): void 
   log.warn({ provider, context, status }, "Rate limit (HTTP 429) — pulando sem interromper o worker");
 }
 
-async function fetchAlphaVantageDailySeries(symbol: string): Promise<{ date: string; close: string }[] | null> {
+async function fetchBrapiDailySeries(symbol: string): Promise<PriceRow[] | null> {
+  const symbolForBrapi = normalizeBrapiSymbol(symbol);
+  const payload = await withRetry("brapi", async () => {
+    const { data, status } = await axios.get<{ results?: BrapiResult[] }>(`${BRAPI_URL}/${encodeURIComponent(symbolForBrapi)}`, {
+      params: {
+        range: "2y",
+        interval: "1d",
+        token: env.brapiToken,
+      },
+      validateStatus: () => true,
+    });
+    if (status === 429) {
+      markProvider429("brapi");
+      logRateLimit("brapi", symbolForBrapi, status);
+      throw new Error("brapi_429");
+    }
+    if (status >= 400) throw new Error(`brapi_http_${status}`);
+    return data;
+  });
+  if (!payload?.results?.length) return null;
+  const history = payload.results[0]?.historicalDataPrice ?? [];
+  const out: PriceRow[] = [];
+  for (const row of history) {
+    if (!row.date || typeof row.close !== "number" || !Number.isFinite(row.close) || row.close <= 0) continue;
+    const ds = new Date(row.date * 1000).toISOString().slice(0, 10);
+    out.push({ date: ds, close: row.close.toFixed(8) });
+  }
+  out.sort((a, b) => b.date.localeCompare(a.date));
+  return out.length ? out : null;
+}
+
+async function fetchYfinancePythonDailySeries(symbol: string): Promise<PriceRow[] | null> {
+  const result = await withRetry("yfinancePython", async () => {
+    const { stdout } = await execFileAsync(env.yfinancePythonExecutable, [YFINANCE_SCRIPT_PATH, symbol, "2y"], {
+      timeout: 60_000,
+      windowsHide: true,
+      maxBuffer: 1024 * 1024 * 4,
+    });
+    return stdout;
+  });
+  if (!result) return null;
+  try {
+    const parsed = JSON.parse(result) as { ok?: boolean; rows?: PriceRow[]; error?: string };
+    if (!parsed.ok || !Array.isArray(parsed.rows)) return null;
+    return parsed.rows.filter((x) => typeof x.date === "string" && typeof x.close === "string");
+  } catch {
+    return null;
+  }
+}
+
+async function fetchAlphaVantageDailySeries(symbol: string): Promise<PriceRow[] | null> {
   if (env.alphaVantageUseMock || !env.alphaVantageApiKey) {
     if (env.alphaVantageUseMock) return mockDailyCloses(symbol);
     log.warn("ALPHA_VANTAGE_API_KEY ausente — fonte Alpha Vantage ignorada (seguindo para fallback real)");
@@ -105,7 +171,7 @@ async function fetchAlphaVantageDailySeries(symbol: string): Promise<{ date: str
   });
 }
 
-async function fetchYahooDailySeries(symbol: string): Promise<{ date: string; close: string }[] | null> {
+async function fetchYahooDailySeries(symbol: string): Promise<PriceRow[] | null> {
   const providerCheck = canUseProvider("yahooFinance");
   if (!providerCheck.ok) return null;
   try {
@@ -146,7 +212,7 @@ async function fetchYahooDailySeries(symbol: string): Promise<{ date: string; cl
     const first = result.chart?.result?.[0];
     const ts = first?.timestamp ?? [];
     const closes = first?.indicators?.quote?.[0]?.close ?? [];
-    const out: { date: string; close: string }[] = [];
+    const out: PriceRow[] = [];
     for (let i = 0; i < ts.length; i++) {
       const t = ts[i];
       const c = closes[i];
@@ -173,7 +239,7 @@ function toStooqSymbol(symbol: string): string {
   return `${s}.us`;
 }
 
-async function fetchStooqDailySeries(symbol: string): Promise<{ date: string; close: string }[] | null> {
+async function fetchStooqDailySeries(symbol: string): Promise<PriceRow[] | null> {
   const stooqSymbol = toStooqSymbol(symbol);
   const payload = await withRetry("stooq", async () => {
     const { data, status } = await axios.get<string>(STOOQ_DAILY_CSV_URL, {
@@ -197,7 +263,7 @@ async function fetchStooqDailySeries(symbol: string): Promise<{ date: string; cl
     .filter(Boolean);
   if (lines.length <= 1) return null;
 
-  const out: { date: string; close: string }[] = [];
+  const out: PriceRow[] = [];
   for (let i = 1; i < lines.length; i++) {
     const cols = lines[i]!.split(",");
     const date = cols[0]?.trim();
@@ -397,12 +463,14 @@ export async function runMarketDataIngestion(): Promise<void> {
       const cfg = MARKET_WORKER_ASSETS[i]!;
       try {
         const providers = [
-          { name: "alphaVantage" as const, fetch: () => fetchAlphaVantageDailySeries(cfg.symbol) },
+          { name: "brapi" as const, fetch: () => fetchBrapiDailySeries(cfg.symbol) },
+          { name: "yfinancePython" as const, fetch: () => fetchYfinancePythonDailySeries(cfg.symbol) },
           { name: "yahooFinance" as const, fetch: () => fetchYahooDailySeries(cfg.symbol) },
           { name: "stooq" as const, fetch: () => fetchStooqDailySeries(cfg.symbol) },
+          { name: "alphaVantage" as const, fetch: () => fetchAlphaVantageDailySeries(cfg.symbol) },
         ];
-        let sourceProvider: "alphaVantage" | "yahooFinance" | "stooq" = "alphaVantage";
-        let series: { date: string; close: string }[] | null = null;
+        let sourceProvider: "brapi" | "yfinancePython" | "yahooFinance" | "stooq" | "alphaVantage" = "brapi";
+        let series: PriceRow[] | null = null;
 
         for (let p = 0; p < providers.length; p++) {
           const current = providers[p]!;
@@ -450,7 +518,10 @@ export async function runMarketDataIngestion(): Promise<void> {
           reason: err instanceof Error ? err.message : "unknown_error",
         });
       }
-      if (i < MARKET_WORKER_ASSETS.length - 1) await sleep(ALPHA_VANTAGE_REQUEST_GAP_MS);
+      if (i < MARKET_WORKER_ASSETS.length - 1) {
+        const gap = env.brapiToken ? BRAPI_REQUEST_GAP_MS : ALPHA_VANTAGE_REQUEST_GAP_MS;
+        await sleep(gap);
+      }
     }
 
     for (const s of MARKET_WORKER_FRED_SERIES) {
