@@ -35,6 +35,8 @@ export const MARKET_WORKER_ASSETS: MonitoredAsset[] = [
   { symbol: "BBDC4.SA", name: "Bradesco PN", category: "Financeiro", type: "STOCK" },
   { symbol: "WEGE3.SA", name: "WEG SA ON", category: "Industrial", type: "STOCK" },
   { symbol: "ABEV3.SA", name: "Ambev SA ON", category: "Consumo", type: "STOCK" },
+  { symbol: "MXRF11.SA", name: "Maxi Renda FII", category: "Imobiliario", type: "STOCK" },
+  { symbol: "ACWI", name: "iShares MSCI ACWI ETF", category: "Index", type: "INDEX" },
 ];
 
 export type FredSeriesConfig = {
@@ -48,12 +50,18 @@ export const MARKET_WORKER_FRED_SERIES: FredSeriesConfig[] = [
   { seriesId: "DCOILWTICO", name: "Petróleo WTI, spot Cushing (USD/bbl)" },
   { seriesId: "VIXCLS", name: "Índice VIX (volatilidade)" },
   { seriesId: "DEXUSEU", name: "Taxa de câmbio USD/EUR (índice)" },
+  { seriesId: "DEXJPUS", name: "Taxa de câmbio Japão JPY/USD (índice)" },
+  { seriesId: "DEXCHUS", name: "Taxa de câmbio China CNY/USD (índice)" },
+  { seriesId: "DEXBZUS", name: "Taxa de câmbio Brasil BRL/USD (índice)" },
   { seriesId: "CPIAUCSL", name: "CPI EUA — todos os consumidores (nível)" },
   { seriesId: "UNRATE", name: "Taxa de desemprego EUA (mensal)" },
   { seriesId: "DGS10", name: "Treasury 10Y EUA (diário)" },
   { seriesId: "DGS2", name: "Treasury 2Y EUA (diário)" },
   { seriesId: "BAMLH0A0HYM2", name: "US High Yield OAS (spread)" },
   { seriesId: "T10YIE", name: "Breakeven 10Y inflação implícita" },
+  { seriesId: "INDPRO", name: "Produção industrial EUA (mensal)" },
+  { seriesId: "PAYEMS", name: "Payroll não-agrícola EUA (mensal)" },
+  { seriesId: "RSAFS", name: "Vendas no varejo EUA (mensal)" },
 ];
 
 /** Intervalo entre chamadas Alpha Vantage (free tier). */

@@ -14,7 +14,10 @@ export type CatalogAsset = {
 
 type SearchSuccess = {
   success: true;
-  data: { results: CatalogAsset[] };
+  data: {
+    results: CatalogAsset[];
+    page?: { limit: number; offset: number; hasMore: boolean };
+  };
 };
 
 type Props = {
@@ -49,53 +52,87 @@ export function AssetLiveSearch({
   const [isLoading, setIsLoading] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const listRef = useRef<HTMLDivElement>(null);
+
+  async function fetchPage(term: string, offset: number, append: boolean): Promise<void> {
+    const ac = new AbortController();
+    if (append) setIsLoadingMore(true);
+    else setIsLoading(true);
+    setFetchError(null);
+    const params = new URLSearchParams({
+      q: term,
+      limit: "20",
+      offset: String(offset),
+    });
+    const url = `${getApiBaseUrl()}/api/v1/assets/search?${params.toString()}`;
+
+    try {
+      const res = await fetch(url, {
+        signal: ac.signal,
+        headers: { Accept: "application/json" },
+      });
+      if (ac.signal.aborted) return;
+      const json = (await res.json()) as SearchSuccess | { success?: false; error?: string };
+      if (ac.signal.aborted) return;
+      if (!res.ok) {
+        const msg =
+          typeof json === "object" && json && "error" in json && typeof json.error === "string"
+            ? json.error
+            : `HTTP ${res.status}`;
+        throw new Error(msg);
+      }
+      if (!json.success || !json.data?.results) {
+        if (!append) setResults([]);
+        setHasMore(false);
+        return;
+      }
+
+      setResults((prev) => (append ? [...prev, ...json.data.results] : json.data.results));
+      setHasMore(Boolean(json.data.page?.hasMore));
+    } catch (e) {
+      if (e instanceof Error && e.name === "AbortError") return;
+      if (ac.signal.aborted) return;
+      if (!append) setResults([]);
+      setFetchError(e instanceof Error ? e.message : "Erro na busca.");
+    } finally {
+      if (!ac.signal.aborted) {
+        setIsLoading(false);
+        setIsLoadingMore(false);
+      }
+    }
+  }
 
   useEffect(() => {
     const t = debouncedTerm.trim();
     if (t.length < 2) {
       setResults([]);
+      setHasMore(false);
       setFetchError(null);
       setIsLoading(false);
       return;
     }
 
-    const ac = new AbortController();
-    void (async () => {
-      setIsLoading(true);
-      setFetchError(null);
-      const url = `${getApiBaseUrl()}/api/v1/assets/search?${new URLSearchParams({ q: t }).toString()}`;
-      try {
-        const res = await fetch(url, {
-          signal: ac.signal,
-          headers: { Accept: "application/json" },
-        });
-        if (ac.signal.aborted) return;
-        const json = (await res.json()) as SearchSuccess | { success?: false; error?: string };
-        if (ac.signal.aborted) return;
-        if (!res.ok) {
-          const msg =
-            typeof json === "object" && json && "error" in json && typeof json.error === "string"
-              ? json.error
-              : `HTTP ${res.status}`;
-          throw new Error(msg);
-        }
-        if (!json.success || !json.data?.results) {
-          setResults([]);
-          return;
-        }
-        setResults(json.data.results);
-      } catch (e) {
-        if (e instanceof Error && e.name === "AbortError") return;
-        if (ac.signal.aborted) return;
-        setResults([]);
-        setFetchError(e instanceof Error ? e.message : "Erro na busca.");
-      } finally {
-        if (!ac.signal.aborted) setIsLoading(false);
-      }
-    })();
-
-    return () => ac.abort();
+    void fetchPage(t, 0, false);
   }, [debouncedTerm]);
+
+  useEffect(() => {
+    const el = listRef.current;
+    if (!el) return;
+
+    function onScroll() {
+      if (!hasMore || isLoading || isLoadingMore) return;
+      const t = debouncedTerm.trim();
+      if (t.length < 2) return;
+      const distanceToBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+      if (distanceToBottom > 48) return;
+      void fetchPage(t, results.length, true);
+    }
+
+    el.addEventListener("scroll", onScroll);
+    return () => el.removeEventListener("scroll", onScroll);
+  }, [debouncedTerm, hasMore, isLoading, isLoadingMore, results.length]);
 
   useEffect(() => {
     function onDocMouseDown(e: MouseEvent) {
@@ -143,6 +180,7 @@ export function AssetLiveSearch({
 
       {showDropdown ? (
         <div
+          ref={listRef}
           className="absolute left-0 right-0 top-full z-50 mt-1 max-h-72 overflow-auto rounded-xl border border-white/10 bg-slate-950/90 py-1 shadow-glass backdrop-blur-xl"
           role="listbox"
         >
@@ -153,31 +191,40 @@ export function AssetLiveSearch({
           ) : results.length === 0 ? (
             <p className="px-3 py-2 text-xs text-slate-500">Sem resultados.</p>
           ) : (
-            results.map((asset) => (
-              <button
-                key={asset.id}
-                type="button"
-                role="option"
-                aria-selected={false}
-                className="flex w-full flex-col gap-1 border-b border-white/5 px-3 py-2.5 text-left last:border-0 hover:bg-white/5"
-                onClick={() => {
-                  onSelectAsset(asset);
-                  setSearchTerm("");
-                  setResults([]);
-                  setOpen(false);
-                }}
-              >
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-semibold text-white">{asset.symbol}</span>
-                  <span
-                    className={`rounded-md border px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide ${categoryBadgeClass(asset.category)}`}
-                  >
-                    {asset.category}
-                  </span>
-                </div>
-                <span className="text-xs text-slate-400">{asset.name}</span>
-              </button>
-            ))
+            <>
+              {results.map((asset) => (
+                <button
+                  key={asset.id}
+                  type="button"
+                  role="option"
+                  aria-selected={false}
+                  className="flex w-full flex-col gap-1 border-b border-white/5 px-3 py-2.5 text-left last:border-0 hover:bg-white/5"
+                  onClick={() => {
+                    onSelectAsset(asset);
+                    setSearchTerm("");
+                    setResults([]);
+                    setHasMore(false);
+                    setOpen(false);
+                  }}
+                >
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-semibold text-white">{asset.symbol}</span>
+                    <span
+                      className={`rounded-md border px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide ${categoryBadgeClass(asset.category)}`}
+                    >
+                      {asset.category}
+                    </span>
+                  </div>
+                  <span className="text-xs text-slate-400">{asset.name}</span>
+                </button>
+              ))}
+              {isLoadingMore ? (
+                <p className="px-3 py-2 text-xs text-slate-500">Carregando mais…</p>
+              ) : null}
+              {hasMore && !isLoadingMore ? (
+                <p className="px-3 py-2 text-xs text-slate-500">Role para carregar mais</p>
+              ) : null}
+            </>
           )}
         </div>
       ) : null}

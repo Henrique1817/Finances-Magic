@@ -32,6 +32,20 @@ export const assetSearchQuerySchema = z.object({
     if (v === undefined || v === null) return "";
     return String(v).trim();
   }, z.string().min(2, { message: "Informe ao menos 2 caracteres em q." }).max(120)),
+  limit: z.preprocess((val) => {
+    const v = firstQueryValue(val);
+    if (v === undefined || v === null || v === "") return 20;
+    if (typeof v === "string") return Number.parseInt(v, 10);
+    if (typeof v === "number") return v;
+    return Number.NaN;
+  }, z.number().int().min(1).max(100)),
+  offset: z.preprocess((val) => {
+    const v = firstQueryValue(val);
+    if (v === undefined || v === null || v === "") return 0;
+    if (typeof v === "string") return Number.parseInt(v, 10);
+    if (typeof v === "number") return v;
+    return Number.NaN;
+  }, z.number().int().min(0).max(10_000)),
 });
 
 export type AssetSearchQuery = z.infer<typeof assetSearchQuerySchema>;

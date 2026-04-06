@@ -119,6 +119,66 @@ const STRATEGIC_ASSETS: ReadonlyArray<{
   { symbol: "BBAS3", name: "Banco do Brasil ON", category: "Brasil", type: AssetType.STOCK },
   { symbol: "ELET3", name: "Eletrobras ON", category: "Brasil", type: AssetType.STOCK },
   { symbol: "SUZB3", name: "Suzano ON", category: "Brasil", type: AssetType.STOCK },
+
+  // Brasil - FIIs e ETFs locais
+  { symbol: "MXRF11", name: "Maxi Renda FII", category: "Imobiliario", type: AssetType.STOCK },
+  { symbol: "XPLG11", name: "XP Log FII", category: "Imobiliario", type: AssetType.STOCK },
+  { symbol: "VISC11", name: "Vinci Shopping Centers FII", category: "Imobiliario", type: AssetType.STOCK },
+  { symbol: "BTLG11", name: "BTG Pactual Logistica FII", category: "Imobiliario", type: AssetType.STOCK },
+  { symbol: "IVVB11", name: "iShares S&P 500 Fundo de Indice", category: "Index", type: AssetType.INDEX },
+  { symbol: "SMAL11", name: "iShares Small Cap Fundo de Indice", category: "Index", type: AssetType.INDEX },
+
+  // Índices e regiões globais (ETFs)
+  { symbol: "ACWI", name: "iShares MSCI ACWI ETF", category: "Index", type: AssetType.INDEX },
+  { symbol: "VT", name: "Vanguard Total World Stock ETF", category: "Index", type: AssetType.INDEX },
+  { symbol: "VEA", name: "Vanguard FTSE Developed Markets ETF", category: "Index", type: AssetType.INDEX },
+  { symbol: "VWO", name: "Vanguard FTSE Emerging Markets ETF", category: "Index", type: AssetType.INDEX },
+  { symbol: "EWJ", name: "iShares MSCI Japan ETF", category: "Index", type: AssetType.INDEX },
+  { symbol: "EWG", name: "iShares MSCI Germany ETF", category: "Index", type: AssetType.INDEX },
+  { symbol: "INDA", name: "iShares MSCI India ETF", category: "Index", type: AssetType.INDEX },
+  { symbol: "FXI", name: "iShares China Large-Cap ETF", category: "Index", type: AssetType.INDEX },
+
+  // Renda fixa global (ETFs)
+  { symbol: "TLT", name: "iShares 20+ Year Treasury Bond ETF", category: "Renda Fixa", type: AssetType.OTHER },
+  { symbol: "IEF", name: "iShares 7-10 Year Treasury Bond ETF", category: "Renda Fixa", type: AssetType.OTHER },
+  { symbol: "BND", name: "Vanguard Total Bond Market ETF", category: "Renda Fixa", type: AssetType.OTHER },
+  { symbol: "LQD", name: "iShares iBoxx $ Investment Grade Corporate Bond ETF", category: "Renda Fixa", type: AssetType.OTHER },
+  { symbol: "HYG", name: "iShares iBoxx $ High Yield Corporate Bond ETF", category: "Renda Fixa", type: AssetType.OTHER },
+
+  // Energia e infraestrutura global
+  { symbol: "NEE", name: "NextEra Energy Inc.", category: "Energia", type: AssetType.ENERGY },
+  { symbol: "ENPH", name: "Enphase Energy Inc.", category: "Energia", type: AssetType.ENERGY },
+  { symbol: "SEDG", name: "SolarEdge Technologies Inc.", category: "Energia", type: AssetType.ENERGY },
+  { symbol: "BEP", name: "Brookfield Renewable Partners", category: "Energia", type: AssetType.ENERGY },
+  { symbol: "ICLN", name: "iShares Global Clean Energy ETF", category: "Energia", type: AssetType.ENERGY },
+
+  // Commodities ampliadas
+  { symbol: "DBB", name: "Invesco DB Base Metals Fund", category: "Commodities", type: AssetType.COMMODITY },
+  { symbol: "CPER", name: "United States Copper Index Fund", category: "Commodities", type: AssetType.COMMODITY },
+  { symbol: "UNG", name: "United States Natural Gas Fund", category: "Commodities", type: AssetType.COMMODITY },
+  { symbol: "CORN", name: "Teucrium Corn Fund", category: "Commodities", type: AssetType.COMMODITY },
+  { symbol: "WEAT", name: "Teucrium Wheat Fund", category: "Commodities", type: AssetType.COMMODITY },
+  { symbol: "SOYB", name: "Teucrium Soybean Fund", category: "Commodities", type: AssetType.COMMODITY },
+
+  // Defesa, aeroespacial e cibersegurança
+  { symbol: "LMT", name: "Lockheed Martin Corp.", category: "Defesa", type: AssetType.STOCK },
+  { symbol: "NOC", name: "Northrop Grumman Corp.", category: "Defesa", type: AssetType.STOCK },
+  { symbol: "RTX", name: "RTX Corp.", category: "Defesa", type: AssetType.STOCK },
+  { symbol: "ITA", name: "iShares U.S. Aerospace & Defense ETF", category: "Defesa", type: AssetType.STOCK },
+  { symbol: "CIBR", name: "First Trust NASDAQ Cybersecurity ETF", category: "Cybersecurity", type: AssetType.STOCK },
+
+  // Biotech e saúde avançada
+  { symbol: "IBB", name: "iShares Biotechnology ETF", category: "Saude", type: AssetType.STOCK },
+  { symbol: "XBI", name: "SPDR S&P Biotech ETF", category: "Saude", type: AssetType.STOCK },
+  { symbol: "ISRG", name: "Intuitive Surgical Inc.", category: "Saude", type: AssetType.STOCK },
+  { symbol: "TMO", name: "Thermo Fisher Scientific Inc.", category: "Saude", type: AssetType.STOCK },
+
+  // Semicondutores e infraestrutura de IA
+  { symbol: "SOXX", name: "iShares Semiconductor ETF", category: "Tech", type: AssetType.STOCK },
+  { symbol: "SMH", name: "VanEck Semiconductor ETF", category: "Tech", type: AssetType.STOCK },
+  { symbol: "AVGO", name: "Broadcom Inc.", category: "Tech", type: AssetType.STOCK },
+  { symbol: "MU", name: "Micron Technology Inc.", category: "Tech", type: AssetType.STOCK },
+  { symbol: "ARM", name: "Arm Holdings plc", category: "Tech", type: AssetType.STOCK },
 ];
 
 async function main() {
