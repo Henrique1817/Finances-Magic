@@ -1,6 +1,7 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { z } from "zod";
 import { env } from "../../config/env";
+import { prisma } from "../../lib/prisma";
 import type { QuantScenarioResult } from "./quantScenarioEngine";
 
 const parseFactorsSchema = z.object({
@@ -40,6 +41,7 @@ export type GeminiScenarioError = {
 export type GeminiScenarioOk<T> = { ok: true; data: T };
 
 type CatalogStub = { id: string; label: string };
+type ModelAttemptError = { model: string; err: unknown };
 
 function buildGeminiErrorMessage(err: unknown, stage: "parse" | "narrativa"): string {
   if (err && typeof err === "object") {
@@ -130,16 +132,118 @@ function safeJsonParse(raw: string): unknown {
   }
 }
 
-function getModel() {
+function getModel(modelName: string) {
   const key = env.geminiApiKey;
   if (!key) return null;
   const gen = new GoogleGenerativeAI(key);
   return gen.getGenerativeModel({
-    model: env.geminiModel,
+    model: modelName,
     generationConfig: {
       responseMimeType: "application/json",
     },
   });
+}
+
+function isDeprecatedModelName(name: string): boolean {
+  const n = name.trim().toLowerCase();
+  return n === "gemini-2.0-flash" || n === "gemini-2.0-flash-lite";
+}
+
+function getGeminiModelCandidates(): string[] {
+  const candidates = [
+    env.geminiModel,
+    ...env.geminiModelFallbacks,
+    "gemini-2.5-flash-lite",
+    "gemini-2.5-flash",
+    "gemini-2.5-pro",
+  ]
+    .map((x) => x.trim())
+    .filter(Boolean)
+    .filter((x) => !isDeprecatedModelName(x));
+  return [...new Set(candidates)];
+}
+
+function shouldTryNextModel(err: unknown): boolean {
+  if (!err || typeof err !== "object") return false;
+  const status = "status" in err ? (err as { status?: unknown }).status : undefined;
+  const message = "message" in err ? String((err as { message?: unknown }).message ?? "") : "";
+  if (status === 429 || status === 404 || status === 403) return true;
+  return /quota|rate|not found|unsupported|permission|resource has been exhausted/i.test(message);
+}
+
+function utcDayStartDate(): Date {
+  const d = new Date();
+  d.setUTCHours(0, 0, 0, 0);
+  return d;
+}
+
+function dailyCapForModel(modelName: string): number {
+  return env.geminiModelDailyCaps[modelName] ?? 60;
+}
+
+async function reserveGeminiModelRequest(modelName: string): Promise<boolean> {
+  const providerKey = `gemini:${modelName}`;
+  const dayStart = utcDayStartDate();
+  const cap = dailyCapForModel(modelName);
+
+  type CountRow = { requests: number };
+  const rows = await prisma.$queryRaw<CountRow[]>`
+    SELECT "requests"
+    FROM "api_quota_counters"
+    WHERE "provider" = ${providerKey}
+      AND "window" = 'day'
+      AND "windowStart" = ${dayStart}
+    LIMIT 1
+  `;
+  const used = rows[0]?.requests ?? 0;
+  if (used >= cap) return false;
+
+  await prisma.$executeRaw`
+    INSERT INTO "api_quota_counters" ("id","provider","window","windowStart","requests","updatedAt","createdAt")
+    VALUES (gen_random_uuid()::text, ${providerKey}, 'day', ${dayStart}, 1, NOW(), NOW())
+    ON CONFLICT ("provider","window","windowStart")
+    DO UPDATE SET "requests" = "api_quota_counters"."requests" + 1, "updatedAt" = NOW()
+  `;
+  return true;
+}
+
+async function generateContentWithFallback(prompt: string): Promise<{ text: string }> {
+  const models = getGeminiModelCandidates();
+  if (!env.geminiApiKey) {
+    throw new Error("GEMINI_API_KEY ausente.");
+  }
+  if (models.length === 0) {
+    throw new Error("Nenhum modelo Gemini válido configurado.");
+  }
+
+  const errors: ModelAttemptError[] = [];
+  for (const modelName of models) {
+    const model = getModel(modelName);
+    if (!model) continue;
+    const reserved = await reserveGeminiModelRequest(modelName);
+    if (!reserved) {
+      errors.push({
+        model: modelName,
+        err: new Error(`Cap diário atingido para ${modelName} (cap=${dailyCapForModel(modelName)}).`),
+      });
+      continue;
+    }
+    try {
+      const result = await model.generateContent(prompt);
+      return { text: result.response.text() };
+    } catch (err) {
+      errors.push({ model: modelName, err });
+      if (!shouldTryNextModel(err)) break;
+    }
+  }
+
+  const last = errors[errors.length - 1];
+  if (!last) {
+    throw new Error("Falha ao inicializar modelos Gemini.");
+  }
+  const attempted = errors.map((e) => e.model).join(", ");
+  const baseMsg = last.err instanceof Error ? last.err.message : String(last.err);
+  throw new Error(`Modelos testados (${attempted}) falharam. Último erro: ${baseMsg}`);
 }
 
 /**
@@ -162,11 +266,6 @@ export async function geminiParseFactors(
     };
   }
 
-  const model = getModel();
-  if (!model) {
-    return { ok: false, code: "NO_API_KEY", message: "Configure GEMINI_API_KEY para usar cenários com IA." };
-  }
-
   const prompt = [
     "És um assistente financeiro. Extrai fatores de risco/cenário a partir da mensagem do utilizador.",
     "Usa APENAS catalogId presentes no catálogo. shockPercent é o movimento percentual hipotético nesse fator (ex.: 10 = +10%, -5 = -5%).",
@@ -184,8 +283,8 @@ export async function geminiParseFactors(
   ].join("\n");
 
   try {
-    const result = await model.generateContent(prompt);
-    const raw = result.response.text();
+    const result = await generateContentWithFallback(prompt);
+    const raw = result.text;
     const json = safeJsonParse(raw);
     const parsed = parseFactorsSchema.safeParse(json);
     if (!parsed.success) {
@@ -227,11 +326,6 @@ export async function geminiBuildNarrative(args: {
     };
   }
 
-  const model = getModel();
-  if (!model) {
-    return { ok: false, code: "NO_API_KEY", message: "Configure GEMINI_API_KEY para usar cenários com IA." };
-  }
-
   const prompt = [
     "Gera uma resposta JSON para um utilizador de uma app de carteira (português de Portugal/Brasil claro e profissional).",
     "Campos obrigatórios:",
@@ -260,8 +354,8 @@ export async function geminiBuildNarrative(args: {
   ].join("\n");
 
   try {
-    const result = await model.generateContent(prompt);
-    const raw = result.response.text();
+    const result = await generateContentWithFallback(prompt);
+    const raw = result.text;
     const json = safeJsonParse(raw);
     const parsed = narrativeSchema.safeParse(json);
     if (!parsed.success) {

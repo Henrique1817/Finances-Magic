@@ -29,7 +29,13 @@ export const env = {
   newsApiKey: optional("NEWS_API_KEY"),
   /** Google Gemini — cenários IA (opcional; sem chave o endpoint retorna erro claro). */
   geminiApiKey: optional("GEMINI_API_KEY"),
-  geminiModel: process.env.GEMINI_MODEL?.trim() || "gemini-2.0-flash",
+  geminiModel: process.env.GEMINI_MODEL?.trim() || "gemini-2.5-flash-lite",
+  geminiModelFallbacks: parseCommaList(process.env.GEMINI_MODEL_FALLBACKS),
+  /**
+   * Cap diário por modelo Gemini para manter custo zero em free tier.
+   * Formato: "gemini-2.5-flash-lite:200,gemini-2.5-flash:120,gemini-2.5-pro:60"
+   */
+  geminiModelDailyCaps: parseGeminiDailyCaps(process.env.GEMINI_MODEL_DAILY_CAPS),
   /** Modo teste: evita chamadas ao Gemini e gera resposta simulada localmente. */
   geminiUseMock: process.env.GEMINI_USE_MOCK === "true",
   /**
@@ -95,4 +101,22 @@ function parseOriginsList(raw: string | undefined): string[] {
     .map((s) => s.trim().replace(/\/$/, ""))
     .filter(Boolean);
   return expandLocalhostAliases(listed);
+}
+
+function parseGeminiDailyCaps(raw: string | undefined): Record<string, number> {
+  const defaults: Record<string, number> = {
+    "gemini-2.5-flash-lite": 200,
+    "gemini-2.5-flash": 120,
+    "gemini-2.5-pro": 60,
+  };
+  if (!raw || raw.trim() === "") return defaults;
+  const out: Record<string, number> = { ...defaults };
+  const entries = raw.split(",").map((x) => x.trim()).filter(Boolean);
+  for (const e of entries) {
+    const [model, capRaw] = e.split(":").map((x) => x.trim());
+    const cap = Number(capRaw);
+    if (!model || !Number.isFinite(cap) || cap <= 0) continue;
+    out[model] = Math.floor(cap);
+  }
+  return out;
 }
