@@ -26,6 +26,12 @@ jobs:
           DIRECT_URL: ${{ secrets.DIRECT_URL }}
         run: npx prisma generate
 
+      - name: Apply Prisma migrations
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
+        run: npx prisma migrate deploy
+
       - name: Run data ingestion
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}

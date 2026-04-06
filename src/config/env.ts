@@ -30,6 +30,8 @@ export const env = {
   /** Google Gemini — cenários IA (opcional; sem chave o endpoint retorna erro claro). */
   geminiApiKey: optional("GEMINI_API_KEY"),
   geminiModel: process.env.GEMINI_MODEL?.trim() || "gemini-2.0-flash",
+  /** Modo teste: evita chamadas ao Gemini e gera resposta simulada localmente. */
+  geminiUseMock: process.env.GEMINI_USE_MOCK === "true",
   /**
    * Regiões de clima (chaves do mapa em `ingestion.ts`), separadas por vírgula.
    * Ex.: SP_CAPITAL,BRASILIA

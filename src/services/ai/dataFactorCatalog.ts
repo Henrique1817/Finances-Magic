@@ -36,6 +36,18 @@ export async function loadFactorCatalog(): Promise<FactorCatalog> {
     name: GEO_RISK_MACRO_NAME,
   });
 
+  const syntheticRows = await prisma.macroIndicator.findMany({
+    where: { seriesId: { startsWith: "CODECHROMA_" } },
+    distinct: ["seriesId"],
+    orderBy: { seriesId: "asc" },
+    select: { seriesId: true, name: true },
+  });
+  for (const s of syntheticRows) {
+    const id = `macro:${s.seriesId}`;
+    if (factors.some((x) => x.id === id)) continue;
+    factors.push({ kind: "macro", id, seriesId: s.seriesId, name: s.name });
+  }
+
   const assets = await prisma.asset.findMany({
     orderBy: { symbol: "asc" },
     select: { symbol: true, name: true, category: true },

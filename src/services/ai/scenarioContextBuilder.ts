@@ -21,6 +21,12 @@ export type ScenarioContext = {
   walletLines: WalletLineWithAsset[];
   macroLastBySeries: MacroSeriesLastDate[];
   recentNewsTitles: string[];
+  climateLastByRegion: Array<{
+    regionKey: string;
+    lastDate: string;
+    tempMeanC: string | null;
+    precipMm: string | null;
+  }>;
 };
 
 /**
@@ -81,7 +87,7 @@ async function loadRecentMacroLastDates(): Promise<MacroSeriesLastDate[]> {
  * Contexto para cenários: carteira, últimas datas macro por série, manchetes recentes.
  */
 export async function buildScenarioContext(userId: string): Promise<ScenarioContext> {
-  const [walletLines, macroLastBySeries, newsRows] = await Promise.all([
+  const [walletLines, macroLastBySeries, newsRows, climateRows] = await Promise.all([
     getWalletLinesWithAssets(userId),
     loadRecentMacroLastDates(),
     prisma.newsRecord.findMany({
@@ -89,12 +95,31 @@ export async function buildScenarioContext(userId: string): Promise<ScenarioCont
       take: 10,
       select: { title: true },
     }),
+    prisma.climateObservation.findMany({
+      orderBy: [{ regionKey: "asc" }, { date: "desc" }],
+      take: 200,
+      select: { regionKey: true, date: true, tempMeanC: true, precipMm: true },
+    }),
   ]);
+  const climateByRegion = new Map<
+    string,
+    { regionKey: string; lastDate: string; tempMeanC: string | null; precipMm: string | null }
+  >();
+  for (const row of climateRows) {
+    if (climateByRegion.has(row.regionKey)) continue;
+    climateByRegion.set(row.regionKey, {
+      regionKey: row.regionKey,
+      lastDate: row.date.toISOString().slice(0, 10),
+      tempMeanC: row.tempMeanC?.toString() ?? null,
+      precipMm: row.precipMm?.toString() ?? null,
+    });
+  }
 
   return {
     walletLines,
     macroLastBySeries,
     recentNewsTitles: newsRows.map((n) => n.title),
+    climateLastByRegion: [...climateByRegion.values()],
   };
 }
 
@@ -124,6 +149,16 @@ export function formatScenarioContextForPrompt(ctx: ScenarioContext): string {
   parts.push("", "Manchetes recentes (até 10):");
   for (const t of ctx.recentNewsTitles) {
     parts.push(`  • ${t}`);
+  }
+
+  parts.push("", "Última observação climática por região (amostra):");
+  for (const c of ctx.climateLastByRegion.slice(0, 25)) {
+    parts.push(
+      `  • ${c.regionKey} @ ${c.lastDate} = temp ${c.tempMeanC ?? "n/d"}°C; precip ${c.precipMm ?? "n/d"} mm`,
+    );
+  }
+  if (ctx.climateLastByRegion.length > 25) {
+    parts.push(`  … (+${ctx.climateLastByRegion.length - 25} regiões)`);
   }
 
   return parts.join("\n");

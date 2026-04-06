@@ -20,7 +20,7 @@ import { ensureUserWallet } from "../services/walletService";
 import type { AiScenarioBody } from "../validation/bodySchemas";
 
 function isQuantFactorId(catalogId: string): boolean {
-  return catalogId.startsWith("macro:") || catalogId.startsWith("asset:");
+  return catalogId.startsWith("macro:") || catalogId.startsWith("asset:") || catalogId.startsWith("climate:");
 }
 
 export const postAiScenarioHandler = asyncHandler(

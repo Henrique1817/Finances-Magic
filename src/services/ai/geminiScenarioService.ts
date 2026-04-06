@@ -39,6 +39,83 @@ export type GeminiScenarioError = {
 
 export type GeminiScenarioOk<T> = { ok: true; data: T };
 
+type CatalogStub = { id: string; label: string };
+
+function buildGeminiErrorMessage(err: unknown, stage: "parse" | "narrativa"): string {
+  if (err && typeof err === "object") {
+    const maybeStatus = "status" in err ? (err as { status?: unknown }).status : undefined;
+    const maybeMessage = "message" in err ? (err as { message?: unknown }).message : undefined;
+    if (maybeStatus === 429) {
+      return "Gemini indisponível por limite de quota (HTTP 429). Verifique billing/plano e limites da API.";
+    }
+    if (typeof maybeMessage === "string" && maybeMessage.trim() !== "") {
+      return `Falha ao chamar o modelo Gemini (${stage}): ${maybeMessage}`;
+    }
+  }
+  return `Falha ao chamar o modelo Gemini (${stage}).`;
+}
+
+function parseCatalogSummaryItems(catalogSummary: string): CatalogStub[] {
+  const rows = catalogSummary.split("\n");
+  const out: CatalogStub[] = [];
+  for (const r of rows) {
+    const m = /^\s*•\s+([a-z]+:[^ ]+)\s+—\s+(.+)\s*$/.exec(r);
+    if (!m?.[1] || !m?.[2]) continue;
+    out.push({ id: m[1].trim(), label: m[2].trim() });
+  }
+  return out;
+}
+
+function buildMockFactors(userMessage: string, catalogSummary: string): ParsedFactorsPayload {
+  const items = parseCatalogSummaryItems(catalogSummary);
+  const tokens = userMessage
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}:+\- ]/gu, " ")
+    .split(/\s+/)
+    .map((x) => x.trim())
+    .filter((x) => x.length >= 2);
+
+  const isNegative = /(queda|crise|recess|baixa|piora|stress|risco|guerra)/i.test(userMessage);
+  const shock = isNegative ? -10 : 10;
+
+  const scored = items
+    .map((it) => {
+      const hay = `${it.id} ${it.label}`.toLowerCase();
+      const score = tokens.reduce((acc, t) => (hay.includes(t) ? acc + 1 : acc), 0);
+      return { ...it, score };
+    })
+    .sort((a, b) => b.score - a.score);
+
+  const picked = scored.filter((x) => x.score > 0).slice(0, 3);
+  const fallback = picked.length > 0 ? picked : scored.slice(0, 2);
+
+  return {
+    factors: fallback.map((f) => ({
+      catalogId: f.id,
+      shockPercent: shock,
+      rationale: "Modo mock ativo para testes (sem custo).",
+    })),
+    userIntentSummary: `Mock local: ${userMessage.slice(0, 120)}`,
+  };
+}
+
+function buildMockNarrative(args: {
+  validatedFactors: ParsedFactorsPayload["factors"];
+  quant: QuantScenarioResult;
+}): NarrativePayload {
+  return {
+    summary: "Narrativa gerada em modo de teste local (mock), sem chamada ao Gemini.",
+    factorsUsed: args.validatedFactors.map((f) => f.catalogId),
+    perAsset: args.quant.perLine.map((row) => ({
+      label: row.assetSymbol ? `${row.nome} (${row.assetSymbol})` : row.nome,
+      impactSummary: `Retorno composto estimado: ${(row.combinedReturnDecimal * 100).toFixed(2)}%.`,
+    })),
+    disclaimer:
+      "Resultado de validação técnica em modo mock. Não constitui aconselhamento financeiro.",
+    riskNotes: ["Defina GEMINI_USE_MOCK=false para usar o modelo real."],
+  };
+}
+
 function safeJsonParse(raw: string): unknown {
   const trimmed = raw.trim();
   try {
@@ -73,6 +150,10 @@ export async function geminiParseFactors(
   catalogSummary: string,
   scenarioContext: string,
 ): Promise<GeminiScenarioOk<ParsedFactorsPayload> | GeminiScenarioError> {
+  if (env.geminiUseMock) {
+    return { ok: true, data: buildMockFactors(userMessage, catalogSummary) };
+  }
+
   if (!env.geminiApiKey) {
     return {
       ok: false,
@@ -115,11 +196,11 @@ export async function geminiParseFactors(
       };
     }
     return { ok: true, data: parsed.data };
-  } catch {
+  } catch (err) {
     return {
       ok: false,
       code: "GENERATION_FAILED",
-      message: "Falha ao chamar o modelo Gemini (parse).",
+      message: buildGeminiErrorMessage(err, "parse"),
     };
   }
 }
@@ -134,6 +215,10 @@ export async function geminiBuildNarrative(args: {
   validatedFactors: ParsedFactorsPayload["factors"];
   quant: QuantScenarioResult;
 }): Promise<GeminiScenarioOk<NarrativePayload> | GeminiScenarioError> {
+  if (env.geminiUseMock) {
+    return { ok: true, data: buildMockNarrative(args) };
+  }
+
   if (!env.geminiApiKey) {
     return {
       ok: false,
@@ -187,11 +272,11 @@ export async function geminiBuildNarrative(args: {
       };
     }
     return { ok: true, data: parsed.data };
-  } catch {
+  } catch (err) {
     return {
       ok: false,
       code: "GENERATION_FAILED",
-      message: "Falha ao chamar o modelo Gemini (narrativa).",
+      message: buildGeminiErrorMessage(err, "narrativa"),
     };
   }
 }

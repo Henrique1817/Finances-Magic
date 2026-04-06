@@ -152,17 +152,58 @@ async function loadAssetReturnsForAssetId(assetId: string, maxPoints: number): P
   return { byDate, dataAsOf: lastDate };
 }
 
-function parseCatalogId(catalogId: string): { type: "macro"; seriesId: string } | { type: "asset"; symbol: string } | null {
+function parseCatalogId(catalogId: string):
+  | { type: "macro"; seriesId: string }
+  | { type: "asset"; symbol: string }
+  | { type: "climate"; regionKey: string }
+  | null {
   const m = /^macro:(.+)$/.exec(catalogId);
   if (m?.[1]) return { type: "macro", seriesId: m[1] };
   const a = /^asset:(.+)$/.exec(catalogId);
   if (a?.[1]) return { type: "asset", symbol: a[1] };
+  const c = /^climate:(.+)$/.exec(catalogId);
+  if (c?.[1]) return { type: "climate", regionKey: c[1] };
   return null;
+}
+
+async function loadClimateReturns(regionKey: string, maxPoints: number): Promise<{
+  byDate: Map<string, number>;
+  dataAsOf: string | null;
+}> {
+  const rows = await prisma.climateObservation.findMany({
+    where: { regionKey },
+    orderBy: { date: "desc" },
+    take: maxPoints,
+    select: { date: true, tempMeanC: true, precipMm: true },
+  });
+  if (rows.length < 2) {
+    return { byDate: new Map(), dataAsOf: null };
+  }
+  const asc = [...rows].reverse();
+  const byDate = new Map<string, number>();
+  for (let i = 1; i < asc.length; i++) {
+    const prev = asc[i - 1]!;
+    const cur = asc[i]!;
+    const prevTemp = Number(prev.tempMeanC ?? 0);
+    const curTemp = Number(cur.tempMeanC ?? 0);
+    const prevP = Number(prev.precipMm ?? 0);
+    const curP = Number(cur.precipMm ?? 0);
+    const tempDelta = curTemp - prevTemp;
+    const precipBase = Math.max(Math.abs(prevP), 1);
+    const precipDeltaPct = (curP - prevP) / precipBase;
+    // Índice climático sintético diário para correlação: combina variação térmica e precipitação.
+    const climateReturn = tempDelta * 0.01 + precipDeltaPct * 0.2;
+    byDate.set(cur.date.toISOString().slice(0, 10), climateReturn);
+  }
+  return {
+    byDate,
+    dataAsOf: asc[asc.length - 1]!.date.toISOString().slice(0, 10),
+  };
 }
 
 /**
  * Estima betas em janela de `WINDOW_DAYS` retornos alinhados e aplica choques percentuais nos fatores.
- * Apenas `macro:*` e `asset:*` entram no cálculo quantitativo.
+ * Fatores aceites: `macro:*`, `asset:*` e `climate:*`.
  */
 export async function runQuantScenario(
   walletLines: WalletLineWithAsset[],
@@ -196,6 +237,13 @@ export async function runQuantScenario(
       const { byDate, dataAsOf: asOf } = await loadMacroReturns(parsed.seriesId, needPoints);
       if (byDate.size < WINDOW_DAYS * 0.5) {
         dataGaps.push(`Histórico macro insuficiente para ${q.catalogId} (mín. desejável ~${WINDOW_DAYS} retornos alinhados).`);
+      }
+      if (asOf) dataAsOf[q.catalogId] = asOf;
+      prepared.push({ catalogId: q.catalogId, shockPercent: q.shockPercent, byDate, asOf });
+    } else if (parsed.type === "climate") {
+      const { byDate, dataAsOf: asOf } = await loadClimateReturns(parsed.regionKey, needPoints);
+      if (byDate.size < WINDOW_DAYS * 0.35) {
+        dataGaps.push(`Histórico climático insuficiente para ${q.catalogId}.`);
       }
       if (asOf) dataAsOf[q.catalogId] = asOf;
       prepared.push({ catalogId: q.catalogId, shockPercent: q.shockPercent, byDate, asOf });

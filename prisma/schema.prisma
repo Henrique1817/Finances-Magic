@@ -175,6 +175,57 @@ model IngestionRun {
   @@map("ingestion_runs")
 }
 
+/// Consumo agregado por provedor/janela para controle de quota
+model ApiQuotaCounter {
+  id          String   @id @default(cuid())
+  provider    String
+  window      String
+  windowStart DateTime
+  requests    Int      @default(0)
+  updatedAt   DateTime @updatedAt
+  createdAt   DateTime @default(now())
+
+  @@unique([provider, window, windowStart])
+  @@index([provider, windowStart(sort: Desc)])
+  @@map("api_quota_counters")
+}
+
+/// Auditoria de fallback entre provedores de ingestão
+model ProviderFallbackEvent {
+  id               String   @id @default(cuid())
+  pipeline         String
+  fromProvider     String
+  toProvider       String
+  reason           String
+  context          String?
+  sourceStatusCode Int?
+  createdAt        DateTime @default(now())
+
+  @@index([pipeline, createdAt(sort: Desc)])
+  @@index([fromProvider, createdAt(sort: Desc)])
+  @@map("provider_fallback_events")
+}
+
+/// Rastreio por item ingerido (sucesso/erro/limite)
+model IngestionItemStatus {
+  id           String   @id @default(cuid())
+  runId        String?  @db.Text
+  jobName      String
+  provider     String
+  itemType     String
+  itemKey      String
+  status       String
+  reason       String?
+  httpStatus   Int?
+  rowsUpserted Int      @default(0)
+  createdAt    DateTime @default(now())
+
+  @@index([jobName, createdAt(sort: Desc)])
+  @@index([provider, createdAt(sort: Desc)])
+  @@index([itemType, itemKey])
+  @@map("ingestion_item_status")
+}
+
 /// Snapshot opcional de exposição a fatores (JSON) para evolução futura
 model FactorExposureSnapshot {
   id         String   @id @default(cuid())

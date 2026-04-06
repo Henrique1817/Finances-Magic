@@ -52,6 +52,30 @@ export type DashboardHistoricalPayload = {
   geoPoliticalRisk: Array<{ date: string; score: number }>;
 };
 
+export type IngestionOpsPayload = {
+  providerQuota: Array<{
+    provider: string;
+    window: string;
+    windowStart: string;
+    requests: number;
+  }>;
+  fallbackEvents: Array<{
+    pipeline: string;
+    fromProvider: string;
+    toProvider: string;
+    reason: string;
+    createdAt: string;
+  }>;
+  recentItemStatus: Array<{
+    jobName: string;
+    provider: string;
+    itemType: string;
+    itemKey: string;
+    status: string;
+    createdAt: string;
+  }>;
+};
+
 function decimalToNumber(d: Prisma.Decimal): number {
   return Number(d.toString());
 }
@@ -197,5 +221,49 @@ export async function getDashboardHistorical(windowDays = 30): Promise<Dashboard
     toDate: formatDateOnly(toDate),
     assetSeries,
     geoPoliticalRisk,
+  };
+}
+
+export async function getIngestionOpsDashboard(): Promise<IngestionOpsPayload> {
+  const [quota, fallbacks, statuses] = await Promise.all([
+    prisma.apiQuotaCounter.findMany({
+      orderBy: { windowStart: "desc" },
+      take: 120,
+      select: { provider: true, window: true, windowStart: true, requests: true },
+    }),
+    prisma.providerFallbackEvent.findMany({
+      orderBy: { createdAt: "desc" },
+      take: 100,
+      select: { pipeline: true, fromProvider: true, toProvider: true, reason: true, createdAt: true },
+    }),
+    prisma.ingestionItemStatus.findMany({
+      orderBy: { createdAt: "desc" },
+      take: 200,
+      select: { jobName: true, provider: true, itemType: true, itemKey: true, status: true, createdAt: true },
+    }),
+  ]);
+
+  return {
+    providerQuota: quota.map((q) => ({
+      provider: q.provider,
+      window: q.window,
+      windowStart: formatDateOnly(q.windowStart),
+      requests: q.requests,
+    })),
+    fallbackEvents: fallbacks.map((f) => ({
+      pipeline: f.pipeline,
+      fromProvider: f.fromProvider,
+      toProvider: f.toProvider,
+      reason: f.reason,
+      createdAt: f.createdAt.toISOString(),
+    })),
+    recentItemStatus: statuses.map((s) => ({
+      jobName: s.jobName,
+      provider: s.provider,
+      itemType: s.itemType,
+      itemKey: s.itemKey,
+      status: s.status,
+      createdAt: s.createdAt.toISOString(),
+    })),
   };
 }

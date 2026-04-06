@@ -5,6 +5,7 @@ import { env } from "../../config/env";
 import { runWithIngestionRunLog } from "../../lib/ingestionRun";
 import { logger } from "../../lib/logger";
 import { prisma } from "../../lib/prisma";
+import { recordIngestionItemStatus, withRetry } from "./quotaPlanner";
 
 const log = logger.child({ worker: "climate" });
 
@@ -49,26 +50,38 @@ export async function runClimateIngestion(): Promise<void> {
       if (!preset) continue;
 
       try {
-        const { data, status } = await axios.get<ArchiveResponse>(OPEN_METEO_ARCHIVE, {
-          params: {
-            latitude: preset.lat,
-            longitude: preset.lon,
-            start_date: startStr,
-            end_date: endStr,
-            daily: "temperature_2m_mean,precipitation_sum",
-            timezone: "UTC",
-          },
-          validateStatus: () => true,
+        const result = await withRetry("openMeteo", async () => {
+          const { data, status } = await axios.get<ArchiveResponse>(OPEN_METEO_ARCHIVE, {
+            params: {
+              latitude: preset.lat,
+              longitude: preset.lon,
+              start_date: startStr,
+              end_date: endStr,
+              daily: "temperature_2m_mean,precipitation_sum",
+              timezone: "UTC",
+            },
+            validateStatus: () => true,
+          });
+          if (status >= 400) {
+            throw new Error(`openmeteo_http_${status}`);
+          }
+          return data;
         });
-
-        if (status >= 400) {
-          log.error({ regionKey, status }, "Open-Meteo HTTP erro");
+        if (!result) {
+          await recordIngestionItemStatus({
+            jobName: "climate",
+            provider: "openMeteo",
+            itemType: "region",
+            itemKey: regionKey,
+            status: "skipped",
+            reason: "quota_or_retry_exhausted",
+          });
           continue;
         }
 
-        const times = data.daily?.time ?? [];
-        const temps = data.daily?.temperature_2m_mean ?? [];
-        const precips = data.daily?.precipitation_sum ?? [];
+        const times = result.daily?.time ?? [];
+        const temps = result.daily?.temperature_2m_mean ?? [];
+        const precips = result.daily?.precipitation_sum ?? [];
 
         for (let i = 0; i < times.length; i++) {
           const day = times[i];
@@ -98,12 +111,28 @@ export async function runClimateIngestion(): Promise<void> {
         }
 
         log.info({ regionKey, days: times.length, label: preset.label }, "Clima persistido");
+        await recordIngestionItemStatus({
+          jobName: "climate",
+          provider: "openMeteo",
+          itemType: "region",
+          itemKey: regionKey,
+          status: "success",
+          rowsUpserted: times.length,
+        });
       } catch (err) {
         if (isAxiosError(err)) {
           log.error({ err: err.message, regionKey }, "Falha de rede Open-Meteo");
         } else {
           log.error({ err, regionKey }, "Falha climateWorker");
         }
+        await recordIngestionItemStatus({
+          jobName: "climate",
+          provider: "openMeteo",
+          itemType: "region",
+          itemKey: regionKey,
+          status: "error",
+          reason: err instanceof Error ? err.message : "unknown_error",
+        });
       }
     }
 
