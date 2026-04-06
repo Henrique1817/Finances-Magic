@@ -89,22 +89,22 @@ export function AiAccuracyRealtimeCard() {
   const d30 = data?.byHorizon.find((h) => h.horizonDays === 30) ?? null;
 
   return (
-    <section className="glass-panel p-6 md:p-8">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
+    <section className="glass-panel p-4 sm:p-6 md:p-8">
+      <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
+        <div className="min-w-0">
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-300/80">
             IA em tempo real
           </p>
-          <h3 className="mt-2 text-xl font-semibold text-white md:text-2xl">
+          <h3 className="mt-2 text-lg font-semibold text-white sm:text-xl md:text-2xl">
             Acurácia validada do motor IA
           </h3>
-          <p className="mt-2 text-base text-slate-200">
+          <p className="mt-2 text-sm text-slate-200 sm:text-base">
             Métrica real baseada em previsões passadas versus retorno observado no mercado.
           </p>
         </div>
-        <div className="text-right">
+        <div className="text-left sm:text-right">
           <p className="text-xs uppercase tracking-wider text-slate-300">Acurácia atual</p>
-          <p className="font-mono text-2xl font-bold text-emerald-300">
+          <p className="font-mono text-xl font-bold text-emerald-300 sm:text-2xl">
             {data ? `${data.currentAccuracyPct.toFixed(2)}%` : "--"}
           </p>
         </div>
@@ -125,7 +125,7 @@ export function AiAccuracyRealtimeCard() {
           Ainda não há previsões validadas suficientes para compor o gráfico.
         </div>
       ) : (
-        <div className="mt-6 h-[280px] w-full">
+        <div className="mt-6 h-[220px] w-full sm:h-[260px] md:h-[280px]">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={trend} margin={{ top: 8, right: 8, left: 0, bottom: 4 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.75} />

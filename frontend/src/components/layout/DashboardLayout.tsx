@@ -13,7 +13,7 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
 
   return (
     <AddAssetModalProvider>
-      <div className="flex min-h-screen">
+      <div className="flex min-h-dvh">
         {!isSimulator ? (
           <div className="hidden md:block">
             <Sidebar />
@@ -28,13 +28,13 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
               aria-label="Fechar menu"
               onClick={() => setMobileNav(false)}
             />
-            <div className="absolute left-0 top-0 h-full shadow-2xl">
+            <div className="absolute left-0 top-0 h-full max-h-dvh max-w-[min(20rem,calc(100vw-1rem))] overflow-y-auto shadow-2xl">
               <Sidebar onNavigate={() => setMobileNav(false)} />
             </div>
           </div>
         ) : null}
 
-        <div className="flex min-w-0 flex-1 flex-col">
+        <div className="flex min-w-0 min-h-0 flex-1 flex-col">
           <TopHeader
             onOpenSidebar={() => setMobileNav(true)}
             variant={isSimulator ? "simulator" : "default"}
@@ -43,7 +43,7 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
             className={
               isSimulator
                 ? "flex min-h-0 flex-1 flex-col overflow-hidden p-0"
-                : "flex-1 px-4 py-6 md:px-8 md:py-10"
+                : "flex-1 overflow-x-hidden px-3 py-5 sm:px-5 sm:py-6 md:px-8 md:py-10"
             }
           >
             {children}

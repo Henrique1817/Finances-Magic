@@ -65,8 +65,8 @@ function LoginPageInner() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center p-4">
-      <div className="glass-panel relative w-full max-w-md p-8 md:p-10">
+    <div className="flex min-h-dvh items-center justify-center p-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[max(1rem,env(safe-area-inset-top))]">
+      <div className="glass-panel relative w-full max-w-md p-6 sm:p-8 md:p-10">
         <div className="mb-8">
           <p className="text-[10px] font-semibold uppercase tracking-[0.25em] text-cyan-400/80">
             Code Chroma

@@ -396,7 +396,7 @@ export function SimulatorWorkspace() {
         <div className="pointer-events-none absolute inset-0 z-[1] bg-[radial-gradient(circle_at_50%_10%,rgba(15,23,42,0)_0%,rgba(2,6,23,0.65)_48%,rgba(2,6,23,0.95)_100%)]" />
 
         <div className="relative z-10 flex min-h-0 flex-1 flex-col overflow-y-auto">
-          <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col px-4 pb-28 pt-8 md:px-8 md:pb-32 md:pt-12">
+          <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col px-3 pb-[max(7rem,env(safe-area-inset-bottom))] pt-6 sm:px-4 sm:pb-28 sm:pt-8 md:px-8 md:pb-32 md:pt-12">
             <div className="mb-2 flex items-center justify-between gap-3 md:hidden">
               <button
                 type="button"
@@ -413,22 +413,22 @@ export function SimulatorWorkspace() {
             <p className="text-center text-sm font-semibold uppercase tracking-[0.25em] text-slate-300">
               Simulação inteligente
             </p>
-            <h2 className="mt-3 text-center text-3xl font-semibold text-white md:text-4xl">
+            <h2 className="mt-3 text-center text-2xl font-semibold leading-tight text-white sm:text-3xl md:text-4xl">
               Olá. Que cenário quer testar?
             </h2>
-            <p className="mx-auto mt-2 max-w-lg text-center text-base text-slate-200">
+            <p className="mx-auto mt-2 max-w-lg text-center text-sm text-slate-200 sm:text-base">
               Descreva um evento possível (mercado, macro, geopolítica). A Code Chroma estima o
               impacto na sua carteira e mostra gráficos interativos — não é recomendação de
               investimento.
             </p>
 
-            <div className="mt-8 flex flex-wrap justify-center gap-2">
+            <div className="mt-6 flex flex-wrap justify-center gap-2 sm:mt-8 sm:gap-2.5">
               {CHIPS.map((c) => (
                 <button
                   key={c}
                   type="button"
                   onClick={() => setDraftMessage(c)}
-                  className="rounded-full border border-white/15 bg-slate-900/75 px-4 py-2 text-sm text-slate-100 shadow-[0_8px_20px_rgba(2,6,23,0.45)] transition hover:-translate-y-0.5 hover:border-cyan-400/40 hover:text-white"
+                  className="max-w-[min(100%,22rem)] rounded-full border border-white/15 bg-slate-900/75 px-3 py-2 text-left text-xs leading-snug text-slate-100 shadow-[0_8px_20px_rgba(2,6,23,0.45)] transition hover:-translate-y-0.5 hover:border-cyan-400/40 hover:text-white sm:max-w-none sm:px-4 sm:py-2 sm:text-sm sm:text-center"
                 >
                   {c}
                 </button>
@@ -529,7 +529,7 @@ export function SimulatorWorkspace() {
           </div>
 
           {/* Input bar — estilo Gemini */}
-          <div className="sticky bottom-0 z-20 border-t border-white/10 bg-slate-950/88 px-4 py-4 backdrop-blur-xl md:px-8">
+          <div className="sticky bottom-0 z-20 border-t border-white/10 bg-slate-950/88 px-3 py-3 backdrop-blur-xl sm:px-4 sm:py-4 md:px-8 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
             <div className="mx-auto max-w-3xl space-y-3">
               {iaError ? (
                 <p className="rounded-lg border border-rose-500/30 bg-rose-950/40 px-3 py-2 text-xs text-rose-200">

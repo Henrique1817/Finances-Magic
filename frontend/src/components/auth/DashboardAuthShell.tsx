@@ -43,8 +43,8 @@ export function DashboardAuthShell({ children }: { children: ReactNode }) {
 
   if (checking) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
-        <div className="glass-panel px-8 py-6 text-center">
+      <div className="flex min-h-dvh items-center justify-center px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[max(1rem,env(safe-area-inset-top))]">
+        <div className="glass-panel px-6 py-6 text-center sm:px-8">
           <p className="text-sm font-medium text-slate-300">Autenticando…</p>
           <p className="mt-1 text-xs text-slate-500">Sincronizando carteira</p>
         </div>

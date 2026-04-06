@@ -73,10 +73,10 @@ export function ScenarioImpactCharts({ quant }: Props) {
   return (
     <div
       ref={wrapRef}
-      className="space-y-6 rounded-2xl border border-white/10 bg-slate-950/50 p-4 backdrop-blur-md md:p-6"
+      className="space-y-4 rounded-2xl border border-white/10 bg-slate-950/50 p-3 backdrop-blur-md sm:space-y-6 sm:p-4 md:p-6"
     >
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
+      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
+        <div className="min-w-0">
           <h3 className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-400/80">
             Impacto estimado
           </h3>
@@ -84,7 +84,7 @@ export function ScenarioImpactCharts({ quant }: Props) {
             Baseline vs. projetado por posição (motor quantitativo + IA).
           </p>
         </div>
-        <div className="text-right">
+        <div className="text-left sm:text-right">
           <p className="text-xs uppercase tracking-wider text-slate-300">
             Variação carteira
           </p>
@@ -99,7 +99,7 @@ export function ScenarioImpactCharts({ quant }: Props) {
         </div>
       </div>
 
-      <div className="h-[min(420px,55vh)] w-full min-h-[240px]">
+      <div className="h-[min(280px,45svh)] w-full min-h-[200px] sm:min-h-[240px] sm:h-[min(380px,50vh)] md:h-[min(420px,55vh)]">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart
             data={chartData}

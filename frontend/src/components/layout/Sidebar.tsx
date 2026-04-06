@@ -27,7 +27,7 @@ export function Sidebar({ onNavigate }: Props) {
   }
 
   return (
-    <aside className="flex h-full w-64 shrink-0 flex-col border-r border-white/10 bg-slate-950/40 px-4 py-6 backdrop-blur-xl">
+    <aside className="flex h-full w-[min(18rem,100vw)] max-w-[85vw] shrink-0 flex-col border-r border-white/10 bg-slate-950/40 px-3 py-5 backdrop-blur-xl sm:w-64 sm:px-4 sm:py-6">
       <div className="mb-10 px-2">
         <p className="text-[10px] font-semibold uppercase tracking-[0.25em] text-cyan-400/70">
           Code Chroma

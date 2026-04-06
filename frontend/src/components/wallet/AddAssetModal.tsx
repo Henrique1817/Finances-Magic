@@ -120,7 +120,7 @@ export function AddAssetModal({ open, onOpenChange }: Props) {
 
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center p-4"
+      className="fixed inset-0 z-[100] flex items-end justify-center p-0 sm:items-center sm:p-4"
       role="dialog"
       aria-modal="true"
       aria-labelledby={`${formId}-title`}
@@ -131,7 +131,7 @@ export function AddAssetModal({ open, onOpenChange }: Props) {
         aria-label="Fechar modal"
         onClick={() => onOpenChange(false)}
       />
-      <div className="glass-modal relative z-10 w-full max-w-md p-6 md:p-8">
+      <div className="glass-modal relative z-10 max-h-[min(92dvh,100%)] w-full max-w-md overflow-y-auto rounded-t-2xl p-5 sm:rounded-2xl sm:p-6 md:p-8 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
         <div className="mb-6 flex items-start justify-between gap-4">
           <div>
             <h2

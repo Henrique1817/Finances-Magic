@@ -66,38 +66,38 @@ export function WalletPanel() {
   return (
     <section
       id="carteira"
-      className="glass-panel scroll-mt-24 p-5 md:p-8"
+      className="glass-panel scroll-mt-24 p-4 sm:p-5 md:p-8"
       aria-labelledby="carteira-heading"
     >
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
+        <div className="min-w-0">
           <h2
             id="carteira-heading"
             className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-400/80"
           >
             Minha conta
           </h2>
-          <p className="mt-1 text-2xl font-semibold tracking-tight text-white md:text-3xl">
+          <p className="mt-1 text-xl font-semibold tracking-tight text-white sm:text-2xl md:text-3xl">
             Sua carteira
           </p>
-          <p className="mt-2 max-w-xl text-base text-slate-200">
+          <p className="mt-2 max-w-xl text-sm text-slate-200 sm:text-base">
             Posições sincronizadas com a conta autenticada. O total usa preço de mercado
             (último fechamento ingerido) × quantidade quando disponível.
           </p>
         </div>
-        <div className="flex flex-col items-start gap-3 sm:items-end">
+        <div className="flex w-full flex-col items-stretch gap-3 sm:w-auto sm:items-end">
           <p className="text-xs uppercase tracking-wider text-slate-300">
             Valor total (mercado)
           </p>
           <TotalValueCounter
             value={total}
             ready={listReady}
-            className="font-mono text-3xl font-bold tabular-nums text-white md:text-4xl"
+            className="font-mono text-2xl font-bold tabular-nums text-white sm:text-3xl md:text-4xl"
           />
           <button
             type="button"
             onClick={openAddAsset}
-            className="rounded-xl border border-cyan-400/30 bg-cyan-400/10 px-4 py-2 text-sm font-medium text-cyan-100 shadow-neon transition hover:border-cyan-300/50 hover:bg-cyan-400/20"
+            className="w-full rounded-xl border border-cyan-400/30 bg-cyan-400/10 px-4 py-2.5 text-sm font-medium text-cyan-100 shadow-neon transition hover:border-cyan-300/50 hover:bg-cyan-400/20 sm:w-auto"
           >
             + Adicionar ativo
           </button>
@@ -113,8 +113,12 @@ export function WalletPanel() {
         </p>
       ) : null}
 
-      <div className="mt-8 overflow-hidden rounded-xl border border-white/10">
-        <table className="w-full min-w-[520px] border-collapse text-left text-sm">
+      <div className="mt-6 sm:mt-8 overflow-hidden rounded-xl border border-white/10">
+        <p className="border-b border-white/10 bg-slate-950/40 px-3 py-2 text-[11px] text-slate-400 sm:hidden">
+          Deslize horizontalmente para ver todas as colunas.
+        </p>
+        <div className="overflow-x-auto overscroll-x-contain [-webkit-overflow-scrolling:touch]">
+        <table className="w-full min-w-[720px] border-collapse text-left text-xs sm:text-sm">
           <thead>
             <tr className="border-b border-white/10 bg-white/[0.03] text-xs uppercase tracking-wider text-slate-300">
               <th className="px-4 py-3 font-medium">Ativo</th>
@@ -214,11 +218,12 @@ export function WalletPanel() {
             )}
           </tbody>
         </table>
+        </div>
       </div>
 
-      <div className="mt-8">
-        <div className="mb-3 flex items-end justify-between gap-3">
-          <h3 className="text-lg font-semibold text-white">Histórico por ativo</h3>
+      <div className="mt-6 sm:mt-8">
+        <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between sm:gap-3">
+          <h3 className="text-base font-semibold text-white sm:text-lg">Histórico por ativo</h3>
           <p className="text-xs text-slate-300">Janela: últimos {windowDays} dias</p>
         </div>
 
@@ -244,14 +249,14 @@ export function WalletPanel() {
             Sem dados de mercado para exibir.
           </div>
         ) : (
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             {marketRows.map((row) => (
               <article
                 key={row.id}
-                className="rounded-xl border border-white/10 bg-slate-950/50 p-4"
+                className="min-w-0 rounded-xl border border-white/10 bg-slate-950/50 p-3 sm:p-4"
               >
-                <div className="mb-3 flex items-start justify-between gap-3">
-                  <div>
+                <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
+                  <div className="min-w-0">
                     <p className="text-sm font-semibold text-white">
                       {row.assetName ?? row.nome}
                       {row.assetSymbol ? (
@@ -265,7 +270,7 @@ export function WalletPanel() {
                     </p>
                   </div>
                   <span
-                    className={`rounded-md px-2 py-1 text-[11px] ${
+                    className={`self-start rounded-md px-2 py-1 text-[11px] sm:self-auto ${
                       row.missingReason
                         ? "bg-amber-500/15 text-amber-100"
                         : "bg-emerald-500/15 text-emerald-200"
@@ -276,7 +281,7 @@ export function WalletPanel() {
                 </div>
 
                 {row.history.length > 1 ? (
-                  <div className="h-44 w-full">
+                  <div className="h-40 w-full sm:h-44">
                     <ResponsiveContainer width="100%" height="100%">
                       <LineChart data={row.history} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.7} />

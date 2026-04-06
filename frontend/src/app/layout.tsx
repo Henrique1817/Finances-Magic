@@ -20,9 +20,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="pt-BR" className={inter.className}>
-      <body className="antialiased">
+      <body className="min-h-dvh antialiased">
         <Background3DLayer />
-        <div className="relative z-10">{children}</div>
+        <div className="relative z-10 min-h-dvh">{children}</div>
       </body>
     </html>
   );

@@ -64,8 +64,8 @@ function AuthCallbackInner() {
   }, [failed, message, router]);
 
   return (
-    <div className="flex min-h-screen items-center justify-center p-4">
-      <div className="glass-panel max-w-md p-8 text-center">
+    <div className="flex min-h-dvh items-center justify-center p-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[max(1rem,env(safe-area-inset-top))]">
+      <div className="glass-panel max-w-md p-6 text-center sm:p-8">
         <p className={failed ? "text-sm text-rose-300" : "text-sm text-slate-300"}>
           {message}
         </p>
@@ -86,7 +86,7 @@ export default function AuthCallbackPage() {
   return (
     <Suspense
       fallback={
-        <div className="flex min-h-screen items-center justify-center">
+        <div className="flex min-h-dvh items-center justify-center px-4">
           <p className="text-sm text-slate-400">A carregar…</p>
         </div>
       }
