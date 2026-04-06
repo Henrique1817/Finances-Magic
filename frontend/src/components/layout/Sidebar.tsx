@@ -52,7 +52,7 @@ export function Sidebar({ onNavigate }: Props) {
               className={`rounded-xl px-3 py-2.5 text-sm font-medium transition ${
                 active
                   ? "bg-gradient-to-r from-cyan-500/20 to-violet-500/15 text-white shadow-neon"
-                  : "text-slate-400 hover:bg-white/5 hover:text-slate-200"
+                  : "text-slate-200 hover:bg-white/5 hover:text-white"
               }`}
             >
               {item.label}
@@ -64,11 +64,11 @@ export function Sidebar({ onNavigate }: Props) {
         <button
           type="button"
           onClick={() => signOut()}
-          className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-left text-sm text-slate-400 transition hover:border-rose-400/25 hover:bg-rose-500/10 hover:text-rose-200"
+          className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-left text-sm text-slate-200 transition hover:border-rose-400/25 hover:bg-rose-500/10 hover:text-rose-200"
         >
           Sair
         </button>
-        <p className="text-[11px] leading-relaxed text-slate-600">
+        <p className="text-[11px] leading-relaxed text-slate-300">
           Proteção de patrimônio · cenários macro
         </p>
       </div>

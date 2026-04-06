@@ -80,12 +80,12 @@ export function ScenarioImpactCharts({ quant }: Props) {
           <h3 className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-400/80">
             Impacto estimado
           </h3>
-          <p className="mt-1 text-sm text-slate-400">
+          <p className="mt-1 text-base text-slate-200">
             Baseline vs. projetado por posição (motor quantitativo + IA).
           </p>
         </div>
         <div className="text-right">
-          <p className="text-[10px] uppercase tracking-wider text-slate-500">
+          <p className="text-xs uppercase tracking-wider text-slate-300">
             Variação carteira
           </p>
           <p
@@ -106,17 +106,17 @@ export function ScenarioImpactCharts({ quant }: Props) {
             margin={{ top: 8, right: 8, left: 0, bottom: 4 }}
             barGap={4}
           >
-            <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" opacity={0.6} />
+            <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.75} />
             <XAxis
               dataKey="name"
-              tick={{ fill: "#94a3b8", fontSize: 11 }}
+              tick={{ fill: "#e2e8f0", fontSize: 13 }}
               interval={0}
               angle={-18}
               textAnchor="end"
               height={72}
             />
             <YAxis
-              tick={{ fill: "#64748b", fontSize: 11 }}
+              tick={{ fill: "#cbd5e1", fontSize: 12 }}
               tickFormatter={(v) => formatBRL(Number(v))}
               width={72}
             />
@@ -133,7 +133,7 @@ export function ScenarioImpactCharts({ quant }: Props) {
               ]}
             />
             <Legend
-              wrapperStyle={{ fontSize: 12, color: "#94a3b8" }}
+              wrapperStyle={{ fontSize: 13, color: "#e2e8f0" }}
               formatter={(value) =>
                 value === "baseline" ? "Valor investido (baseline)" : "Projetado"
               }

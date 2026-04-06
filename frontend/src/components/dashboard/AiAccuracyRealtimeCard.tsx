@@ -98,12 +98,12 @@ export function AiAccuracyRealtimeCard() {
           <h3 className="mt-2 text-xl font-semibold text-white md:text-2xl">
             Acurácia validada do motor IA
           </h3>
-          <p className="mt-2 text-sm text-slate-400">
+          <p className="mt-2 text-base text-slate-200">
             Métrica real baseada em previsões passadas versus retorno observado no mercado.
           </p>
         </div>
         <div className="text-right">
-          <p className="text-[10px] uppercase tracking-wider text-slate-500">Acurácia atual</p>
+          <p className="text-xs uppercase tracking-wider text-slate-300">Acurácia atual</p>
           <p className="font-mono text-2xl font-bold text-emerald-300">
             {data ? `${data.currentAccuracyPct.toFixed(2)}%` : "--"}
           </p>
@@ -117,22 +117,22 @@ export function AiAccuracyRealtimeCard() {
       ) : null}
 
       {loading ? (
-        <div className="mt-6 flex min-h-[220px] items-center justify-center text-sm text-slate-400">
+        <div className="mt-6 flex min-h-[220px] items-center justify-center text-base text-slate-200">
           Carregando acurácia da IA…
         </div>
       ) : trend.length === 0 ? (
-        <div className="mt-6 rounded-xl border border-white/10 bg-slate-950/40 px-4 py-6 text-sm text-slate-400">
+        <div className="mt-6 rounded-xl border border-white/10 bg-slate-950/40 px-4 py-6 text-base text-slate-200">
           Ainda não há previsões validadas suficientes para compor o gráfico.
         </div>
       ) : (
         <div className="mt-6 h-[280px] w-full">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={trend} margin={{ top: 8, right: 8, left: 0, bottom: 4 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" opacity={0.6} />
-              <XAxis dataKey="time" tick={{ fill: "#94a3b8", fontSize: 11 }} />
+              <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.75} />
+              <XAxis dataKey="time" tick={{ fill: "#e2e8f0", fontSize: 12 }} />
               <YAxis
                 domain={[0, 100]}
-                tick={{ fill: "#64748b", fontSize: 11 }}
+                tick={{ fill: "#cbd5e1", fontSize: 12 }}
                 tickFormatter={(v) => `${Number(v).toFixed(0)}%`}
                 width={56}
               />
@@ -145,7 +145,7 @@ export function AiAccuracyRealtimeCard() {
                 labelStyle={{ color: "#e2e8f0" }}
                 formatter={(value: number, name: string) => [`${value.toFixed(2)}%`, name === "d7" ? "Acurácia D+7" : "Acurácia D+30"]}
               />
-              <Legend wrapperStyle={{ fontSize: 12, color: "#94a3b8" }} />
+              <Legend wrapperStyle={{ fontSize: 13, color: "#e2e8f0" }} />
               <Line
                 type="monotone"
                 dataKey="d7"
@@ -169,7 +169,7 @@ export function AiAccuracyRealtimeCard() {
         </div>
       )}
 
-      <div className="mt-5 grid gap-3 text-xs text-slate-400 sm:grid-cols-3">
+      <div className="mt-5 grid gap-3 text-xs text-slate-200 sm:grid-cols-3">
         <div className="rounded-lg border border-white/10 bg-white/[0.02] px-3 py-2">
           Previsões validadas:{" "}
           <span className="font-mono text-slate-200">{data ? data.validatedPredictions : "--"}</span>
@@ -185,7 +185,7 @@ export function AiAccuracyRealtimeCard() {
           <span className="font-mono text-slate-200">{data ? compactNumber(data.trainingRows) : "--"}</span>
         </div>
       </div>
-      <div className="mt-3 grid gap-3 text-xs text-slate-400 sm:grid-cols-2">
+      <div className="mt-3 grid gap-3 text-xs text-slate-200 sm:grid-cols-2">
         <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-3 py-2">
           D+7:{" "}
           <span className="font-mono text-emerald-200">

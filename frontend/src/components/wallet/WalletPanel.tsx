@@ -41,13 +41,13 @@ export function WalletPanel() {
           <p className="mt-1 text-2xl font-semibold tracking-tight text-white md:text-3xl">
             Sua carteira
           </p>
-          <p className="mt-2 max-w-xl text-sm text-slate-400">
+          <p className="mt-2 max-w-xl text-base text-slate-200">
             Posições sincronizadas com a conta autenticada. Use o total como base
             nos cenários do simulador.
           </p>
         </div>
         <div className="flex flex-col items-start gap-3 sm:items-end">
-          <p className="text-xs uppercase tracking-wider text-slate-500">
+          <p className="text-xs uppercase tracking-wider text-slate-300">
             Valor total
           </p>
           <TotalValueCounter
@@ -77,7 +77,7 @@ export function WalletPanel() {
       <div className="mt-8 overflow-hidden rounded-xl border border-white/10">
         <table className="w-full min-w-[520px] border-collapse text-left text-sm">
           <thead>
-            <tr className="border-b border-white/10 bg-white/[0.03] text-xs uppercase tracking-wider text-slate-500">
+            <tr className="border-b border-white/10 bg-white/[0.03] text-xs uppercase tracking-wider text-slate-300">
               <th className="px-4 py-3 font-medium">Ativo</th>
               <th className="px-4 py-3 font-medium">Setor</th>
               <th className="hidden px-4 py-3 font-medium sm:table-cell">
@@ -92,7 +92,7 @@ export function WalletPanel() {
               <tr>
                 <td
                   colSpan={5}
-                  className="px-4 py-10 text-center text-slate-500"
+                  className="px-4 py-10 text-center text-slate-300"
                 >
                   Carregando carteira…
                 </td>
@@ -101,7 +101,7 @@ export function WalletPanel() {
               <tr>
                 <td
                   colSpan={5}
-                  className="px-4 py-10 text-center text-slate-500"
+                  className="px-4 py-10 text-center text-slate-300"
                 >
                   Nenhum ativo. Adicione uma posição para começar.
                 </td>
@@ -120,7 +120,7 @@ export function WalletPanel() {
                       {a.setor}
                     </span>
                   </td>
-                  <td className="hidden px-4 py-3 font-mono text-slate-400 sm:table-cell">
+                  <td className="hidden px-4 py-3 font-mono text-slate-200 sm:table-cell">
                     {a.quantidade}
                   </td>
                   <td className="px-4 py-3 font-mono text-slate-200">

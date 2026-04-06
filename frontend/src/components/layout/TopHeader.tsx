@@ -28,7 +28,7 @@ export function TopHeader({ onOpenSidebar, variant = "default" }: Props) {
           <h1 className="text-base font-semibold text-white md:text-lg">
             {sim ? "Code Chroma" : "Painel"}
           </h1>
-          <p className="hidden text-xs text-slate-500 sm:block">
+          <p className="hidden text-xs text-slate-300 sm:block">
             {sim
               ? "Simulação de cenários · IA + gráficos"
               : "Simulador global de risco · visão macro"}

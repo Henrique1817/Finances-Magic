@@ -49,12 +49,12 @@ function SliderRow({
     <div className="space-y-2">
       <div className="flex items-end justify-between gap-3">
         <div>
-          <label htmlFor={id} className="text-sm font-medium text-slate-200">
+          <label htmlFor={id} className="text-base font-medium text-slate-100">
             {label}
           </label>
-          <p className="text-xs text-slate-500">{hint}</p>
+          <p className="text-sm text-slate-300">{hint}</p>
         </div>
-        <span className="font-mono text-sm tabular-nums text-cyan-300">
+        <span className="font-mono text-base tabular-nums text-cyan-200">
           {value}
           {suffix ?? ""}
         </span>
@@ -327,9 +327,9 @@ export function SimulatorWorkspace() {
                     </button>
                   </div>
                 ) : listLoading ? (
-                  <p className="px-2 text-xs text-slate-500">A sincronizar com o servidor…</p>
+                  <p className="px-2 text-sm text-slate-300">A sincronizar com o servidor…</p>
                 ) : scenarios.length === 0 ? (
-                  <p className="px-2 text-xs leading-relaxed text-slate-500">
+                  <p className="px-2 text-sm leading-relaxed text-slate-300">
                     Nenhum cenário na conta. Envie uma análise abaixo — fica guardada no servidor.
                   </p>
                 ) : (
@@ -345,10 +345,10 @@ export function SimulatorWorkspace() {
                             setRailOpen(false);
                           }
                         }}
-                        className={`flex w-full items-start gap-2 rounded-xl px-3 py-2.5 text-left text-sm transition ${
+                        className={`flex w-full items-start gap-2 rounded-xl px-3 py-2.5 text-left text-base transition ${
                           active
                             ? "bg-gradient-to-r from-cyan-500/20 to-violet-600/15 text-white"
-                            : "text-slate-400 hover:bg-white/5 hover:text-slate-200"
+                            : "text-slate-200 hover:bg-white/5 hover:text-white"
                         }`}
                       >
                         <span className="mt-0.5 text-slate-600" aria-hidden>
@@ -402,13 +402,13 @@ export function SimulatorWorkspace() {
               </span>
             </div>
 
-            <p className="text-center text-xs font-semibold uppercase tracking-[0.25em] text-slate-500">
+            <p className="text-center text-sm font-semibold uppercase tracking-[0.25em] text-slate-300">
               Simulação inteligente
             </p>
             <h2 className="mt-3 text-center text-2xl font-semibold text-white md:text-3xl">
               Olá. Que cenário quer testar?
             </h2>
-            <p className="mx-auto mt-2 max-w-lg text-center text-sm text-slate-400">
+            <p className="mx-auto mt-2 max-w-lg text-center text-base text-slate-200">
               Descreva um evento possível (mercado, macro, geopolítica). A Code Chroma estima o
               impacto na sua carteira e mostra gráficos interativos — não é recomendação de
               investimento.
@@ -420,7 +420,7 @@ export function SimulatorWorkspace() {
                   key={c}
                   type="button"
                   onClick={() => setDraftMessage(c)}
-                  className="rounded-full border border-white/10 bg-slate-900/60 px-4 py-2 text-xs text-slate-300 transition hover:border-cyan-500/30 hover:text-white"
+                  className="rounded-full border border-white/10 bg-slate-900/60 px-4 py-2 text-sm text-slate-100 transition hover:border-cyan-500/30 hover:text-white"
                 >
                   {c}
                 </button>
@@ -430,14 +430,14 @@ export function SimulatorWorkspace() {
             <div data-scenario-result className="mt-10 space-y-6">
               {detailError ? (
                 <p
-                  className="rounded-xl border border-rose-500/30 bg-rose-950/40 px-4 py-3 text-sm text-rose-200"
+                  className="rounded-xl border border-rose-500/30 bg-rose-950/40 px-4 py-3 text-base text-rose-100"
                   role="alert"
                 >
                   {detailError}
                 </p>
               ) : null}
               {detailLoading ? (
-                <div className="flex items-center justify-center gap-3 rounded-2xl border border-white/10 bg-slate-950/50 py-16 text-sm text-slate-400">
+                <div className="flex items-center justify-center gap-3 rounded-2xl border border-white/10 bg-slate-950/50 py-16 text-base text-slate-200">
                   <span className="h-5 w-5 animate-spin rounded-full border-2 border-cyan-500/30 border-t-cyan-400" />
                   A carregar cenário…
                 </div>
@@ -448,20 +448,20 @@ export function SimulatorWorkspace() {
 
               {!detailLoading && displayResponse ? (
                 <div className="rounded-2xl border border-white/10 bg-slate-950/60 p-5 backdrop-blur-md">
-                  <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                  <h3 className="text-sm font-semibold uppercase tracking-wider text-slate-300">
                     Leitura IA
                   </h3>
-                  <p className="mt-2 text-sm text-slate-200">{displayResponse.narrative.summary}</p>
+                  <p className="mt-2 text-base text-slate-100">{displayResponse.narrative.summary}</p>
                   {displayResponse.narrative.factorsUsed.length > 0 ? (
                     <div className="mt-4">
-                      <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+                      <p className="text-xs font-semibold uppercase tracking-wider text-slate-300">
                         Fatores
                       </p>
                       <ul className="mt-2 flex flex-wrap gap-2">
                         {displayResponse.narrative.factorsUsed.map((f) => (
                           <li
                             key={f}
-                            className="rounded-lg bg-slate-900/80 px-2 py-1 font-mono text-[10px] text-cyan-200/90"
+                            className="rounded-lg bg-slate-900/80 px-2 py-1 font-mono text-xs text-cyan-100"
                           >
                             {f}
                           </li>
@@ -471,15 +471,15 @@ export function SimulatorWorkspace() {
                   ) : null}
                   {displayResponse.narrative.evidence && displayResponse.narrative.evidence.length > 0 ? (
                     <div className="mt-4 border-t border-white/10 pt-3">
-                      <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+                      <p className="text-xs font-semibold uppercase tracking-wider text-slate-300">
                         Provas do cenário
                       </p>
                       <ul className="mt-2 space-y-2">
                         {displayResponse.narrative.evidence.map((ev, idx) => (
                           <li key={`${ev.title}-${idx}`} className="rounded-lg border border-white/10 bg-white/[0.02] p-2.5">
-                            <p className="text-xs font-semibold text-cyan-100">{ev.title}</p>
-                            <p className="mt-1 text-xs text-slate-300">{ev.detail}</p>
-                            <div className="mt-1 flex flex-wrap items-center gap-2 text-[10px] text-slate-500">
+                            <p className="text-sm font-semibold text-cyan-100">{ev.title}</p>
+                            <p className="mt-1 text-sm text-slate-200">{ev.detail}</p>
+                            <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-300">
                               {ev.relatedFactorId ? <span>Fator: {ev.relatedFactorId}</span> : null}
                               {ev.relatedAssetLabel ? <span>Ativo: {ev.relatedAssetLabel}</span> : null}
                               {typeof ev.confidence === "number" ? (
@@ -491,7 +491,7 @@ export function SimulatorWorkspace() {
                       </ul>
                     </div>
                   ) : null}
-                  <p className="mt-4 border-t border-white/10 pt-3 text-xs text-amber-200/85">
+                  <p className="mt-4 border-t border-white/10 pt-3 text-sm text-amber-100">
                     {displayResponse.narrative.disclaimer}
                   </p>
                 </div>
@@ -502,13 +502,13 @@ export function SimulatorWorkspace() {
                   <h3 className="text-sm font-semibold text-violet-200">Stress clássico (sliders)</h3>
                   <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
                     <div>
-                      <dt className="text-slate-500">Projetado</dt>
+                      <dt className="text-slate-300">Projetado</dt>
                       <dd className="font-mono text-slate-100">
                         {formatBRL(stressResult.projectedPortfolioValue)}
                       </dd>
                     </div>
                     <div>
-                      <dt className="text-slate-500">Variação</dt>
+                      <dt className="text-slate-300">Variação</dt>
                       <dd className="font-mono text-slate-100">
                         {stressResult.changePercent >= 0 ? "+" : ""}
                         {stressResult.changePercent.toFixed(2)}%
@@ -535,7 +535,7 @@ export function SimulatorWorkspace() {
                   rows={2}
                   maxLength={4000}
                   placeholder="Descreva o cenário possível…"
-                  className="max-h-40 min-h-[44px] flex-1 resize-y bg-transparent px-3 py-2 text-sm text-slate-100 placeholder:text-slate-600 focus:outline-none"
+                  className="max-h-40 min-h-[44px] flex-1 resize-y bg-transparent px-3 py-2 text-base text-slate-100 placeholder:text-slate-400 focus:outline-none"
                 />
                 <button
                   type="button"
@@ -551,10 +551,10 @@ export function SimulatorWorkspace() {
                   )}
                 </button>
               </div>
-              <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-600">
+              <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-300">
                 <span>
                   Carteira:{" "}
-                  <span className="font-mono text-slate-400">
+                  <span className="font-mono text-slate-100">
                     {!listReady ? "…" : formatBRL(portfolioValue)}
                   </span>
                 </span>
@@ -564,7 +564,7 @@ export function SimulatorWorkspace() {
               <button
                 type="button"
                 onClick={() => setStressOpen((o) => !o)}
-                className="text-xs text-slate-500 underline decoration-slate-600 underline-offset-2 hover:text-slate-300"
+                className="text-sm text-slate-300 underline decoration-slate-500 underline-offset-2 hover:text-slate-100"
               >
                 {stressOpen ? "Ocultar" : "Mostrar"} simulação por sliders (modo clássico)
               </button>
@@ -608,7 +608,7 @@ export function SimulatorWorkspace() {
                     className="rounded-xl border-2 border-emerald-500/30 bg-slate-950/50 px-4 py-3"
                     style={{ willChange: "transform" }}
                   >
-                    <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+                    <p className="text-xs font-semibold uppercase tracking-wider text-slate-300">
                       Pré-visualização património
                     </p>
                     <p className="mt-1 font-mono text-lg text-white">{formatBRL(portfolioValue)}</p>

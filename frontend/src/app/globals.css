@@ -4,7 +4,7 @@
 
 @layer base {
   body {
-    @apply min-h-screen text-slate-200 antialiased;
+    @apply min-h-screen bg-slate-950 text-slate-100 antialiased;
     background: radial-gradient(
         ellipse 120% 90% at 50% -10%,
         #0c1222 0%,
@@ -12,6 +12,10 @@
         #020203 100%
       )
       fixed;
+  }
+
+  :root {
+    color-scheme: dark;
   }
 }
 
