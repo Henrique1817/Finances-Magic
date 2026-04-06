@@ -1,21 +1,26 @@
 "use client";
 
+import { usePathname } from "next/navigation";
 import { useState, type ReactNode } from "react";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { TopHeader } from "@/components/layout/TopHeader";
 import { AddAssetModalProvider } from "@/contexts/AddAssetModalContext";
 
 export function DashboardLayout({ children }: { children: ReactNode }) {
+  const pathname = usePathname();
   const [mobileNav, setMobileNav] = useState(false);
+  const isSimulator = pathname === "/simulator";
 
   return (
     <AddAssetModalProvider>
       <div className="flex min-h-screen">
-        <div className="hidden md:block">
-          <Sidebar />
-        </div>
+        {!isSimulator ? (
+          <div className="hidden md:block">
+            <Sidebar />
+          </div>
+        ) : null}
 
-        {mobileNav ? (
+        {!isSimulator && mobileNav ? (
           <div className="fixed inset-0 z-50 md:hidden">
             <button
               type="button"
@@ -30,8 +35,19 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
         ) : null}
 
         <div className="flex min-w-0 flex-1 flex-col">
-          <TopHeader onOpenSidebar={() => setMobileNav(true)} />
-          <main className="flex-1 px-4 py-6 md:px-8 md:py-10">{children}</main>
+          <TopHeader
+            onOpenSidebar={() => setMobileNav(true)}
+            variant={isSimulator ? "simulator" : "default"}
+          />
+          <main
+            className={
+              isSimulator
+                ? "flex min-h-0 flex-1 flex-col overflow-hidden p-0"
+                : "flex-1 px-4 py-6 md:px-8 md:py-10"
+            }
+          >
+            {children}
+          </main>
         </div>
       </div>
     </AddAssetModalProvider>

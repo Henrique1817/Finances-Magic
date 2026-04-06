@@ -1,11 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import {
-  describeSupabaseAuthException,
-  isSupabaseBrowserConfigured,
-  supabase,
-} from "@/lib/supabaseClient";
+
+import { getApiBaseUrl } from "@/config/api";
 
 type Props = {
   /** Texto do botão (login vs. registo). */
@@ -44,40 +41,17 @@ export function GoogleOAuthButton({
 }: Props) {
   const [busy, setBusy] = useState(false);
 
-  async function handleClick() {
+  function handleClick() {
     onError(null);
-    if (!isSupabaseBrowserConfigured()) {
-      onError(
-        "Configure NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_ANON_KEY em frontend/.env.local e reinicie o servidor.",
-      );
-      return;
-    }
     setBusy(true);
     try {
+      const api = getApiBaseUrl();
       const origin = window.location.origin.replace(/\/$/, "");
-      const { data, error } = await supabase.auth.signInWithOAuth({
-        provider: "google",
-        options: {
-          redirectTo: `${origin}/auth/callback`,
-          scopes: "email profile openid",
-          queryParams: {
-            prompt: "select_account",
-          },
-        },
-      });
-      if (error) {
-        onError(error.message);
-        setBusy(false);
-        return;
-      }
-      if (data.url) {
-        window.location.assign(data.url);
-        return;
-      }
-      onError("Resposta inesperada do Supabase ao iniciar o Google.");
-      setBusy(false);
+      const redirectTo = `${origin}/auth/callback`;
+      const url = `${api}/api/v1/auth/oauth/google?redirect_to=${encodeURIComponent(redirectTo)}`;
+      window.location.assign(url);
     } catch (e) {
-      onError(describeSupabaseAuthException(e));
+      onError(e instanceof Error ? e.message : "Não foi possível abrir o login com Google.");
       setBusy(false);
     }
   }
@@ -86,11 +60,11 @@ export function GoogleOAuthButton({
     <button
       type="button"
       disabled={disabled || busy}
-      onClick={() => void handleClick()}
+      onClick={() => handleClick()}
       className="flex w-full items-center justify-center gap-3 rounded-xl border border-white/15 bg-white/[0.07] px-4 py-2.5 text-sm font-medium text-white shadow-sm transition hover:border-white/25 hover:bg-white/[0.1] disabled:cursor-not-allowed disabled:opacity-50"
     >
       <GoogleIcon className="h-5 w-5 shrink-0" />
-      {busy ? "A abrir o Google…" : label}
+      {busy ? "A abrir…" : label}
     </button>
   );
 }

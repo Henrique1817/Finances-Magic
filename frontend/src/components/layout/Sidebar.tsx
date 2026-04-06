@@ -2,7 +2,9 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { supabase } from "@/lib/supabaseClient";
+
+import { logoutLocal } from "@/lib/authApi";
+import { useWalletStore } from "@/store/useWalletStore";
 
 const nav = [
   { href: "/", label: "Início" },
@@ -17,9 +19,11 @@ type Props = {
 export function Sidebar({ onNavigate }: Props) {
   const pathname = usePathname();
 
-  async function signOut() {
+  function signOut() {
     onNavigate?.();
-    await supabase.auth.signOut();
+    useWalletStore.getState().resetWallet();
+    logoutLocal();
+    window.location.href = "/login";
   }
 
   return (
@@ -59,9 +63,7 @@ export function Sidebar({ onNavigate }: Props) {
       <div className="mt-auto space-y-3 px-2">
         <button
           type="button"
-          onClick={() => {
-            void signOut();
-          }}
+          onClick={() => signOut()}
           className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-left text-sm text-slate-400 transition hover:border-rose-400/25 hover:bg-rose-500/10 hover:text-rose-200"
         >
           Sair

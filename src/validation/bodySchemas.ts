@@ -20,3 +20,13 @@ export const walletAssetCreateSchema = z.object({
 });
 
 export type WalletAssetCreateBody = z.infer<typeof walletAssetCreateSchema>;
+
+export const aiScenarioBodySchema = z.object({
+  message: z
+    .string()
+    .trim()
+    .min(1, { message: "Escreva uma pergunta ou cenário." })
+    .max(4000, { message: "A mensagem pode ter no máximo 4000 caracteres." }),
+});
+
+export type AiScenarioBody = z.infer<typeof aiScenarioBodySchema>;

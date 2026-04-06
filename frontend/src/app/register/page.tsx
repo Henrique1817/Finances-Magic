@@ -3,16 +3,12 @@
 import { useEffect, useId, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { isAxiosError } from "axios";
 import { GoogleOAuthButton } from "@/components/auth/GoogleOAuthButton";
-import {
-  formatAuthError,
-  isSignUpDuplicateEmailNoIdentities,
-} from "@/lib/formatAuthError";
-import {
-  describeSupabaseAuthException,
-  isSupabaseBrowserConfigured,
-  supabase,
-} from "@/lib/supabaseClient";
+import { formatApiAuthMessage } from "@/lib/formatAuthError";
+import { registerWithPassword } from "@/lib/authApi";
+import { hasAuthSession } from "@/lib/authSession";
+import { messageFromApiError } from "@/lib/apiErrorMessage";
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -25,9 +21,7 @@ export default function RegisterPage() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) router.replace("/");
-    });
+    if (hasAuthSession()) router.replace("/");
   }, [router]);
 
   async function handleSubmit(e: FormEvent) {
@@ -46,38 +40,29 @@ export default function RegisterPage() {
       setError("As senhas não coincidem.");
       return;
     }
-    if (!isSupabaseBrowserConfigured()) {
-      setError(
-        "Configure o Supabase no frontend: crie `frontend/.env.local` com NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_ANON_KEY (Settings → API). Reinicie `npm run dev`.",
-      );
-      return;
-    }
     setLoading(true);
     try {
-      const { data, error: signErr } = await supabase.auth.signUp({
-        email: email.trim().toLowerCase(),
-        password,
-      });
-      if (signErr) {
-        setError(formatAuthError(signErr));
-        return;
-      }
-      if (isSignUpDuplicateEmailNoIdentities(data.user)) {
-        setError(
-          "Este e-mail já está associado a uma conta. Use «Entrar» ou «Continuar com Google» (se for o mesmo Gmail). No painel Supabase, pode haver duas entradas se criou com Google e com senha — use o mesmo método de sempre.",
-        );
-        return;
-      }
-      if (data.session) {
+      const result = await registerWithPassword(email.trim().toLowerCase(), password);
+      if (result.kind === "session") {
         router.replace("/");
         router.refresh();
         return;
       }
-      setInfo(
-        "Conta criada. Se o projeto exigir confirmação por e-mail, verifique sua caixa de entrada antes de entrar.",
-      );
+      setInfo(result.message);
     } catch (e) {
-      setError(describeSupabaseAuthException(e));
+      if (isAxiosError(e)) {
+        const body = e.response?.data;
+        const msg =
+          body &&
+          typeof body === "object" &&
+          "error" in body &&
+          typeof (body as { error: unknown }).error === "string"
+            ? (body as { error: string }).error
+            : messageFromApiError(e);
+        setError(formatApiAuthMessage(msg));
+      } else {
+        setError(e instanceof Error ? e.message : "Erro ao registar.");
+      }
     } finally {
       setLoading(false);
     }
@@ -94,7 +79,7 @@ export default function RegisterPage() {
             Criar conta
           </h1>
           <p className="mt-2 text-sm text-slate-400">
-            Crie conta com Google ou com e-mail e senha.
+            Crie conta com Google ou com e-mail e senha (via API).
           </p>
         </div>
 

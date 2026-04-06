@@ -5,7 +5,7 @@ import {
   useWalletStore,
   type SetorAtivo,
 } from "@/store/useWalletStore";
-import { supabase } from "@/lib/supabaseClient";
+import { getAccessToken } from "@/lib/authSession";
 import { parseLocaleNumber } from "@/lib/parseLocaleNumber";
 import { AssetLiveSearch, type CatalogAsset } from "@/components/AssetLiveSearch";
 
@@ -80,10 +80,7 @@ export function AddAssetModal({ open, onOpenChange }: Props) {
       return;
     }
 
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-    if (!session?.access_token) {
+    if (!getAccessToken()) {
       setError(
         "Sem sessão ativa. Aguarde o carregamento ou faça login novamente para guardar posições.",
       );

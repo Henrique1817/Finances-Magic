@@ -3,23 +3,17 @@
 import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { supabase } from "@/lib/supabaseClient";
 
-function hintForOAuthFailure(text: string): string {
-  const t = text.toLowerCase();
-  if (
-    t.includes("code verifier") ||
-    t.includes("invalid request") ||
-    t.includes("redirect_uri") ||
-    t.includes("redirect uri")
-  ) {
-    return (
-      `${text} — Confirme no Supabase: Authentication → URL Configuration → Redirect URLs, inclua exatamente ` +
-      "`http://localhost:3000/auth/callback` e `http://127.0.0.1:3000/auth/callback` se usar ambos. " +
-      "No Google Cloud, o redirect autorizado tem de ser `https://<ref>.supabase.co/auth/v1/callback`."
-    );
-  }
-  return text;
+import { setStoredSession } from "@/lib/authSession";
+
+function parseHashParams(hash: string): Record<string, string> {
+  const raw = hash.startsWith("#") ? hash.slice(1) : hash;
+  const params = new URLSearchParams(raw);
+  const out: Record<string, string> = {};
+  params.forEach((v, k) => {
+    out[k] = v;
+  });
+  return out;
 }
 
 function AuthCallbackInner() {
@@ -29,44 +23,35 @@ function AuthCallbackInner() {
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
-    const code = searchParams.get("code");
-    const err =
+    const qErr =
       searchParams.get("error_description") ?? searchParams.get("error");
-
-    if (err) {
+    if (qErr) {
       setFailed(true);
-      const raw = decodeURIComponent(String(err).replace(/\+/g, " "));
-      setMessage(hintForOAuthFailure(raw));
+      setMessage(decodeURIComponent(String(qErr).replace(/\+/g, " ")));
       return;
     }
 
-    async function finish() {
-      if (code) {
-        const { error } = await supabase.auth.exchangeCodeForSession(code);
-        if (error) {
-          setFailed(true);
-          setMessage(hintForOAuthFailure(error.message));
-          return;
-        }
-        router.replace("/");
-        router.refresh();
-        return;
-      }
+    if (typeof window === "undefined") return;
 
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (session) {
-        router.replace("/");
-        router.refresh();
-        return;
-      }
+    const fromHash = parseHashParams(window.location.hash);
+    const access = fromHash.access_token;
+    const refresh = fromHash.refresh_token;
+    const expiresAt = fromHash.expires_at;
 
-      setFailed(true);
-      setMessage("Não foi possível concluir o login. Volte a tentar.");
+    if (access && refresh) {
+      setStoredSession({
+        access_token: access,
+        refresh_token: refresh,
+        expires_at: expiresAt ? Number(expiresAt) : undefined,
+      });
+      window.history.replaceState(null, "", window.location.pathname + window.location.search);
+      router.replace("/");
+      router.refresh();
+      return;
     }
 
-    void finish();
+    setFailed(true);
+    setMessage("Não foi possível concluir o login. Volte a tentar.");
   }, [router, searchParams]);
 
   return (

@@ -19,9 +19,26 @@ model User {
   email     String   @unique
   createdAt DateTime @default(now())
 
-  wallet Wallet?
+  wallet    Wallet?
+  scenarios Scenario[]
 
   @@map("users")
+}
+
+/// Cenário de simulação IA guardado (mensagem + resultado quant + narrativa)
+model Scenario {
+  id         String   @id @default(cuid())
+  userId     String   @db.Uuid
+  title      String
+  message    String   @db.Text
+  resultJson Json
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@map("scenarios")
 }
 
 /// Carteira 1:1 com o usuário
@@ -57,14 +74,17 @@ model WalletAsset {
 
 /// Ativos monitorados (ações tech, commodities, energia, etc.)
 model Asset {
-  id        String   @id @default(cuid())
-  symbol    String   @unique
-  name      String
+  id          String    @id @default(cuid())
+  symbol      String    @unique
+  name        String
   /// Agrupamento para o motor de correlação (ex.: Tech, Commodities, Index).
-  category  String   @default("Other")
-  type      AssetType
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  category    String    @default("Other")
+  type        AssetType
+  issuerName  String?
+  exchange    String?
+  isin        String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
   priceHistory AssetPriceHistory[]
   walletAssets WalletAsset[]
@@ -109,16 +129,60 @@ model MacroIndicator {
   @@map("macro_indicators")
 }
 
-/// Notícias ingeridas (ex.: NewsAPI) — top do dia para contexto de risco
+/// Notícias ingeridas (ex.: NewsAPI) — contexto de risco / IA
 model NewsRecord {
   id          String   @id @default(cuid())
   title       String
   source      String
   publishedAt DateTime
-  url         String?
+  url         String   @unique
   description String?  @db.Text
+  externalId  String?
+  summary     String?  @db.Text
+  fetchedAt   DateTime @default(now())
   createdAt   DateTime @default(now())
 
   @@index([publishedAt(sort: Desc)])
   @@map("news_records")
+}
+
+/// Série diária de clima (Open-Meteo archive) por região lógica
+model ClimateObservation {
+  id        String   @id @default(cuid())
+  regionKey String
+  date      DateTime @db.Date
+  tempMeanC Decimal? @db.Decimal(10, 4)
+  precipMm  Decimal? @db.Decimal(12, 4)
+  source    String
+  createdAt DateTime @default(now())
+
+  @@unique([regionKey, date])
+  @@index([regionKey, date(sort: Desc)])
+  @@map("climate_observations")
+}
+
+/// Execução de job de ingestão (auditoria)
+model IngestionRun {
+  id             String    @id @default(cuid())
+  jobName        String
+  startedAt      DateTime  @default(now())
+  finishedAt     DateTime?
+  status         String
+  rowsUpserted   Int       @default(0)
+  error          String?   @db.Text
+
+  @@index([jobName, startedAt(sort: Desc)])
+  @@map("ingestion_runs")
+}
+
+/// Snapshot opcional de exposição a fatores (JSON) para evolução futura
+model FactorExposureSnapshot {
+  id         String   @id @default(cuid())
+  asOfDate   DateTime @db.Date
+  windowDays Int
+  payload    Json
+  createdAt  DateTime @default(now())
+
+  @@index([asOfDate(sort: Desc)])
+  @@map("factor_exposure_snapshots")
 }

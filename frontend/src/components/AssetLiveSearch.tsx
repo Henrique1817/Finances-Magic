@@ -158,6 +158,7 @@ export function AssetLiveSearch({
                 key={asset.id}
                 type="button"
                 role="option"
+                aria-selected={false}
                 className="flex w-full flex-col gap-1 border-b border-white/5 px-3 py-2.5 text-left last:border-0 hover:bg-white/5"
                 onClick={() => {
                   onSelectAsset(asset);

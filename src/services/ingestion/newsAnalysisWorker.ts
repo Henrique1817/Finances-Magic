@@ -4,11 +4,14 @@ import {
   GEO_RISK_MACRO_NAME,
   GEO_RISK_SERIES_ID,
   NEWS_ANALYSIS_PAGE_SIZE,
-  NEWS_ANALYSIS_QUERY,
+  NEWS_ANALYSIS_QUERIES,
+  NEWS_ANALYSIS_QUERY_DELAY_MS,
 } from "../../config/ingestion";
 import { env } from "../../config/env";
+import { runWithIngestionRunLog } from "../../lib/ingestionRun";
 import { logger } from "../../lib/logger";
 import { prisma } from "../../lib/prisma";
+import { sleep } from "../../lib/sleep";
 import type { GeopoliticalRiskResult, NewsArticleForAnalysis } from "./types";
 
 const log = logger.child({ worker: "newsAnalysis" });
@@ -63,18 +66,6 @@ function countMatches(text: string, words: readonly string[]): number {
   return n;
 }
 
-/**
- * Análise de sentimento / risco **heurística** (MVP).
- *
- * ---
- * **Integrações futuras (IA):** substituir o corpo desta função por:
- * - Chamada à **Google Gemini API** ou **Vertex AI** com o array de manchetes agregadas em um único prompt de classificação (escala 1–10 + justificativa estruturada JSON); ou
- * - **Hugging Face Inference API** com modelo multilíngue de sentimento / NLI (ex.: `cardiffnlp/twitter-xlm-roberta-base-sentiment` ou fine-tune próprio); ou
- * - Pipeline local com **@xenova/transformers** (ONNX) para embeddings + regressão linear treinada.
- *
- * Mantenha a assinatura `NewsArticleForAnalysis[]` → `GeopoliticalRiskResult` para o worker continuar igual.
- * ---
- */
 export function analyzeSentimentAndRisk(articles: NewsArticleForAnalysis[]): GeopoliticalRiskResult {
   if (articles.length === 0) {
     return {
@@ -106,17 +97,19 @@ type NewsApiArticle = {
   title: string | null;
   description?: string | null;
   url?: string | null;
-  source?: { name?: string | null };
+  source?: { id?: string | null; name?: string | null };
   publishedAt?: string | null;
 };
 
 function toAnalysisArticle(a: NewsApiArticle): NewsArticleForAnalysis | null {
   const title = a.title?.trim();
   if (!title) return null;
+  const sourceId = a.source?.id?.trim();
   return {
     title,
     description: a.description?.trim() ?? null,
     url: a.url?.trim() ?? null,
+    externalId: sourceId || null,
     sourceName: a.source?.name?.trim() || "desconhecida",
     publishedAt: a.publishedAt ? new Date(a.publishedAt) : new Date(),
   };
@@ -145,87 +138,126 @@ async function persistGeopoliticalRisk(result: GeopoliticalRiskResult): Promise<
   log.info({ score: result.score, seriesId: GEO_RISK_SERIES_ID }, "Risco geopolítico (NLP heurístico) salvo em MacroIndicator");
 }
 
-async function persistNewArticles(articles: NewsArticleForAnalysis[]): Promise<void> {
+async function persistNewArticles(articles: NewsArticleForAnalysis[]): Promise<number> {
+  let n = 0;
   for (const a of articles) {
-    const href = a.url?.trim() ?? null;
-    if (href) {
-      const exists = await prisma.newsRecord.findFirst({ where: { url: href } });
-      if (exists) continue;
-    }
-    await prisma.newsRecord.create({
-      data: {
+    const href = a.url?.trim();
+    if (!href) continue;
+
+    const summary = a.description ? a.description.slice(0, 2000) : null;
+
+    await prisma.newsRecord.upsert({
+      where: { url: href },
+      create: {
         title: a.title,
         source: a.sourceName,
+        publishedAt: a.publishedAt,
         url: href,
         description: a.description,
+        externalId: a.externalId,
+        summary,
+        fetchedAt: new Date(),
+      },
+      update: {
+        title: a.title,
+        source: a.sourceName,
         publishedAt: a.publishedAt,
+        description: a.description,
+        externalId: a.externalId ?? undefined,
+        summary: summary ?? undefined,
+        fetchedAt: new Date(),
       },
     });
+    n += 1;
   }
+  return n;
+}
+
+async function fetchNewsForQuery(q: string, fromStr: string): Promise<NewsArticleForAnalysis[]> {
+  const key = env.newsApiKey;
+  if (!key) return [];
+
+  const { data, status } = await axios.get<{
+    status?: string;
+    code?: string;
+    message?: string;
+    articles?: NewsApiArticle[];
+  }>(NEWS_EVERYTHING_URL, {
+    params: {
+      q,
+      sortBy: "publishedAt",
+      pageSize: NEWS_ANALYSIS_PAGE_SIZE,
+      from: fromStr,
+      apiKey: key,
+    },
+    validateStatus: () => true,
+  });
+
+  if (status === 429) {
+    logRateLimit("newsApi", status);
+    return [];
+  }
+
+  if (status >= 400 || data.status === "error") {
+    log.error({ httpStatus: status, message: data.message, code: data.code }, "NewsAPI erro");
+    return [];
+  }
+
+  const rawList = data.articles ?? [];
+  const out: NewsArticleForAnalysis[] = [];
+  for (const r of rawList) {
+    const mapped = toAnalysisArticle(r);
+    if (mapped) out.push(mapped);
+  }
+  return out;
 }
 
 /**
- * Coleta NewsAPI (keywords), analisa risco, grava `MacroIndicator` + `NewsRecord`.
+ * Coleta NewsAPI (várias queries), analisa risco, grava `MacroIndicator` + `NewsRecord`.
  */
 export async function runNewsAnalysisIngestion(): Promise<void> {
-  log.info("Início newsAnalysisWorker");
+  await runWithIngestionRunLog("newsAnalysis", async () => {
+    log.info("Início newsAnalysisWorker");
 
-  const key = env.newsApiKey;
-  if (!key) {
-    log.warn("NEWS_API_KEY ausente — worker de notícias ignorado");
-    return;
-  }
-
-  const from = new Date();
-  from.setDate(from.getDate() - 2);
-  const fromStr = from.toISOString().slice(0, 10);
-
-  try {
-    const { data, status } = await axios.get<{
-      status?: string;
-      code?: string;
-      message?: string;
-      articles?: NewsApiArticle[];
-    }>(NEWS_EVERYTHING_URL, {
-      params: {
-        q: NEWS_ANALYSIS_QUERY,
-        sortBy: "publishedAt",
-        pageSize: NEWS_ANALYSIS_PAGE_SIZE,
-        from: fromStr,
-        apiKey: key,
-      },
-      validateStatus: () => true,
-    });
-
-    if (status === 429) {
-      logRateLimit("newsApi", status);
-      return;
+    if (!env.newsApiKey) {
+      log.warn("NEWS_API_KEY ausente — worker de notícias ignorado");
+      return 0;
     }
 
-    if (status >= 400 || data.status === "error") {
-      log.error({ httpStatus: status, message: data.message, code: data.code }, "NewsAPI erro");
-      return;
+    const from = new Date();
+    from.setDate(from.getDate() - 2);
+    const fromStr = from.toISOString().slice(0, 10);
+
+    const merged = new Map<string, NewsArticleForAnalysis>();
+
+    try {
+      for (let i = 0; i < NEWS_ANALYSIS_QUERIES.length; i++) {
+        const q = NEWS_ANALYSIS_QUERIES[i]!;
+        const batch = await fetchNewsForQuery(q, fromStr);
+        for (const a of batch) {
+          const key = a.url?.trim() ?? `${a.title}\0${a.publishedAt.toISOString()}`;
+          if (!merged.has(key)) merged.set(key, a);
+        }
+        if (i < NEWS_ANALYSIS_QUERIES.length - 1) {
+          await sleep(NEWS_ANALYSIS_QUERY_DELAY_MS);
+        }
+      }
+
+      const forAnalysis = [...merged.values()];
+      const risk = analyzeSentimentAndRisk(forAnalysis);
+      log.info({ score: risk.score, summary: risk.summary }, "Resultado heurístico de risco");
+
+      await persistGeopoliticalRisk(risk);
+      const rows = await persistNewArticles(forAnalysis);
+      log.info("Fim newsAnalysisWorker");
+      return rows;
+    } catch (err) {
+      if (isAxiosError(err) && err.response?.status === 429) {
+        logRateLimit("newsApi", 429);
+        return 0;
+      }
+      log.error({ err }, "Falha newsAnalysisWorker");
+      throw err;
     }
-
-    const rawList = data.articles ?? [];
-    const forAnalysis: NewsArticleForAnalysis[] = [];
-    for (const r of rawList) {
-      const mapped = toAnalysisArticle(r);
-      if (mapped) forAnalysis.push(mapped);
-    }
-
-    const risk = analyzeSentimentAndRisk(forAnalysis);
-    log.info({ score: risk.score, summary: risk.summary }, "Resultado heurístico de risco");
-
-    await persistGeopoliticalRisk(risk);
-    await persistNewArticles(forAnalysis);
-  } catch (err) {
-    if (isAxiosError(err) && err.response?.status === 429) {
-      logRateLimit("newsApi", 429);
-      return;
-    }
-    log.error({ err }, "Falha newsAnalysisWorker");
-  }
-
-  log.info("Fim newsAnalysisWorker");
+  });
 }

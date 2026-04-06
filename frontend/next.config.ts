@@ -13,13 +13,11 @@ const nextConfig: NextConfig = {
     devtoolSegmentExplorer: false,
   },
 
-  /** Cache em RAM no dev reduz ENOENT em `.next/cache/webpack/.../*.pack.gz`. */
-  webpack: (config, { dev }) => {
-    if (dev) {
-      config.cache = { type: "memory" };
-    }
-    return config;
-  },
+  /**
+   * Axios no bundle do servidor costuma gerar `__webpack_modules__[id] is not a function`
+   * em alguns setups (Windows / Webpack). Usar o pacote de node_modules no runtime evita isso.
+   */
+  serverExternalPackages: ["axios"],
 };
 
 export default nextConfig;

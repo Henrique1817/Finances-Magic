@@ -1,3 +1,4 @@
+import cookieParser from "cookie-parser";
 import cors from "cors";
 import express, { type Request, type Response } from "express";
 import helmet from "helmet";
@@ -30,9 +31,31 @@ export function createApp() {
   app.use(apiVersionHeaders);
   app.use(
     cors({
-      origin: env.frontendOrigins,
+      origin(origin, callback) {
+        if (!origin) {
+          callback(null, true);
+          return;
+        }
+        if (env.frontendOrigins.includes(origin)) {
+          callback(null, true);
+          return;
+        }
+        if (env.corsAllowVercelPreviews) {
+          try {
+            const host = new URL(origin).hostname;
+            if (host === "vercel.app" || host.endsWith(".vercel.app")) {
+              callback(null, true);
+              return;
+            }
+          } catch {
+            /* URL inválido */
+          }
+        }
+        callback(null, false);
+      },
     }),
   );
+  app.use(cookieParser());
   app.use(express.json());
 
   app.get("/health", (_req: Request, res: Response) => {

@@ -1,6 +1,6 @@
 # Code Chroma — Backend (Simulador de Cenários)
 
-API REST em **Node.js + TypeScript + Express** para o MVP da Code Chroma: ingestão diária de preços (Alpha Vantage), indicadores macro (FRED) e notícias (NewsAPI), persistência em **PostgreSQL** via **Prisma**, e endpoints somente leitura para o simulador de cenários no frontend.
+API REST em **Node.js + TypeScript + Express** para o MVP da Code Chroma: ingestão diária de preços (Alpha Vantage), indicadores macro (FRED), notícias (NewsAPI), clima (Open-Meteo, sem chave), persistência em **PostgreSQL** via **Prisma**, simulador de cenários no frontend e **cenários em linguagem natural** com Google Gemini (`POST /api/v1/ai/scenario`).
 
 **Versão da API (contrato JSON):** `1.0.0` (campo `apiVersion` nas respostas JSON; ver [Versionamento](#versionamento)).
 
@@ -10,7 +10,7 @@ API REST em **Node.js + TypeScript + Express** para o MVP da Code Chroma: ingest
 
 - Node.js **20+**
 - PostgreSQL **14+** (recomendado 16)
-- Chaves opcionais para ingestão: Alpha Vantage, FRED, NewsAPI
+- Chaves opcionais: ingestão Alpha Vantage, FRED, NewsAPI; **Gemini** para cenários IA; clima Open-Meteo não exige chave
 
 ---
 
@@ -77,7 +77,7 @@ API REST em **Node.js + TypeScript + Express** para o MVP da Code Chroma: ingest
 | Variável | Obrigatória | Descrição |
 |----------|-------------|-----------|
 | `DATABASE_URL` | Sim | URL PostgreSQL para a app (no Supabase: preferir *Transaction pooler* `:6543` com `?pgbouncer=true`) |
-| `DIRECT_URL` | Sim | URL PostgreSQL **direta** (`:5432`) para migrações Prisma; em dev local pode ser igual a `DATABASE_URL` |
+| `DIRECT_URL` | Sim | URL para migrações Prisma: **Session pooler** (`*.pooler.supabase.com:5432`) no Railway/IPv4; **Direct** (`db.*.supabase.co:5432`) se IPv6 disponível; em Postgres local pode ser igual a `DATABASE_URL` |
 | `SUPABASE_URL` | Sim | URL do projeto Supabase (validação de JWT no backend) |
 | `SUPABASE_ANON_KEY` | Sim | Chave anon/public do Supabase (`auth.getUser`) |
 | `PORT` | Não | Porta HTTP (padrão `3000`) |
@@ -87,9 +87,26 @@ API REST em **Node.js + TypeScript + Express** para o MVP da Code Chroma: ingest
 | `ALPHA_VANTAGE_API_KEY` | Não | Sem chave, o bloco Alpha Vantage na ingestão é ignorado |
 | `FRED_API_KEY` | Não | Idem para FRED |
 | `NEWS_API_KEY` | Não | Idem para NewsAPI |
+| `GEMINI_API_KEY` | Não | **Cenários IA** (`POST /api/v1/ai/scenario`). Sem valor, esse endpoint responde **503** com mensagem clara |
+| `GEMINI_MODEL` | Não | Modelo Gemini (padrão `gemini-2.0-flash`). Ver [modelos Gemini](https://ai.google.dev/gemini-api/docs/models/gemini) |
+| `CLIMATE_REGION_KEYS` | Não | Lista separada por vírgulas (ex.: `SP_CAPITAL,BRASILIA`). Chaves válidas em `src/config/ingestion.ts` → `CLIMATE_REGION_PRESETS`. Sem valor, o worker de clima regista aviso e não grava dados |
 | `ALPHA_VANTAGE_USE_MOCK` | Não | `true` força fechamentos simulados (sem rede Alpha Vantage) |
 | `CRON_TZ` | Não | Fuso IANA do cron (padrão `America/Sao_Paulo`) |
 | `INGESTION_CRON_ENABLED` | Não | Defina `false` para desligar o agendamento |
+
+### Onde obter as chaves de API
+
+| Provedor | Variável | Onde criar a chave |
+|----------|----------|-------------------|
+| **Google (Gemini)** | `GEMINI_API_KEY` | [Google AI Studio](https://aistudio.google.com/apikey) → *Create API key* (conta Google). A mesma chave serve à API Gemini em `generativelanguage.googleapis.com`. |
+| **Alpha Vantage** | `ALPHA_VANTAGE_API_KEY` | [alphavantage.co/support/#api-key](https://www.alphavantage.co/support/#api-key) — registo gratuito; atenção aos limites do plano free (ex.: 25 pedidos/dia). |
+| **FRED (Federal Reserve)** | `FRED_API_KEY` | [fred.stlouisfed.org/docs/api/api_key.html](https://fred.stlouisfed.org/docs/api/api_key.html) — criar conta em [fredaccount.stlouisfed.org](https://fredaccount.stlouisfed.org) e pedir API Key. |
+| **NewsAPI** | `NEWS_API_KEY` | [newsapi.org/register](https://newsapi.org/register) — plano developer; o endpoint `everything` pode ter restrições em ambiente de produção (ler termos do site). |
+| **Supabase** | `SUPABASE_URL`, `SUPABASE_ANON_KEY` | Painel do projeto → **Project Settings** → **API** (URL + chave `anon` / public). |
+| **PostgreSQL** | `DATABASE_URL`, `DIRECT_URL` | Supabase → **Database** → *Connection string*; ou credenciais do teu Postgres. |
+| **Open-Meteo (clima)** | — | **Não usa chave** — API pública em [open-meteo.com](https://open-meteo.com/). Configura só `CLIMATE_REGION_KEYS` para ativar o worker. |
+
+**Nota:** O frontend **não** precisa de `GEMINI_API_KEY`; a chave fica **só no servidor** (backend). O browser chama `POST /api/v1/ai/scenario` com o JWT Supabase (cada sucesso grava um registo em `scenarios` e devolve `scenarioId` + `title`). A lista e o detalhe sincronizam com **`GET /api/v1/scenarios`** e **`GET /api/v1/scenarios/:scenarioId`** (autenticados); **`DELETE`** remove o registo do utilizador.
 
 ### Onde configurar
 
@@ -106,7 +123,7 @@ O Postgres do projeto vive no **Supabase**; a API liga-se com Prisma usando **du
 
 1. No Supabase: **Project Settings** → **Database** → **Connection string** → **URI**.
 2. **`DATABASE_URL`** — modo **Transaction** (pooler, porta **6543**). A string deve começar por `postgresql://` ou `postgres://` e, no pooler, incluir normalmente `?pgbouncer=true` (como no snippet do painel).
-3. **`DIRECT_URL`** — **Direct connection** (host `db.<ref>.supabase.co`, porta **5432**). O Prisma usa isto em **`prisma migrate deploy`**; o pooler sozinho costuma falhar nas migrações.
+3. **`DIRECT_URL`** — Para **`prisma migrate deploy`**. Em **Railway** e outros hosts **só IPv4**, a conexão **Direct** (`db.<ref>.supabase.co`) costuma falhar (**P1001**): o Supabase expõe IPv6 nesse host. Usa então o **Session pooler** (Connect → **Session mode**, host `*.pooler.supabase.com`, porta **5432**, utilizador `postgres.<ref>`). Em rede com IPv6 ou em local, **Direct** continua válida.
 4. **`SUPABASE_URL`** e **`SUPABASE_ANON_KEY`** — **Project Settings** → **API** (URL do projeto e chave `anon` / public).
 
 No **Railway** (ou outro host), coloca estas quatro variáveis no **mesmo** serviço da API. No **`.env` local**, se usares um Postgres simples (não pooler), podes definir **`DIRECT_URL`** igual a **`DATABASE_URL`**.
@@ -149,6 +166,8 @@ Crie em **Settings → Secrets and variables → Actions → New repository secr
 | `FRED_API_KEY` | Ingestão macro | Opcional. |
 | `NEWS_API_KEY` | Ingestão de notícias / NLP | Opcional. |
 | `ALPHA_VANTAGE_USE_MOCK` | Ingestão | Opcional; defina o texto `true` se quiser forçar mock na pipeline (útil para não gastar quota). |
+| `CLIMATE_REGION_KEYS` | Ingestão de clima | Opcional; ex.: `SP_CAPITAL,BRASILIA`. Sem secret, o worker de clima em CI não grava regiões (comportamento seguro). |
+| `GEMINI_API_KEY` | — | **Não** é usado pelo workflow de ingestão; só no **servidor da API** em runtime para `POST /api/v1/ai/scenario`. |
 
 O workflow **não** expõe chaves no código; apenas mapeia `secrets.*` para variáveis de ambiente no passo `Run data ingestion`.
 
@@ -434,8 +453,9 @@ Workers registrados em `src/workers.ts` (chamado a partir de `src/index.ts`):
 
 | Worker | Agendamento (cron) | Fuso | Responsabilidade |
 |--------|---------------------|------|-------------------|
-| **marketData** | `30 18 * * 1-5` (seg–sex 18:30) | `CRON_TZ` | Alpha Vantage: **AAPL**, **COPX**, **XLE** → `AssetPriceHistory`; FRED **DFF** + **DCOILWTICO** → `MacroIndicator`. HTTP **429** apenas gera log. |
-| **newsAnalysis** | `0 8 * * *` (todo dia 08:00) | `CRON_TZ` | NewsAPI (`everything`) com keywords em `NEWS_ANALYSIS_QUERY`; heurística `analyzeSentimentAndRisk` → nota 1–10 em `MacroIndicator` (`CODECHROMA_GEO_RISK_NLP`) + `NewsRecord`. |
+| **marketData** | `30 18 * * 1-5` (seg–sex 18:30) | `CRON_TZ` | Alpha Vantage (símbolos em `MARKET_WORKER_ASSETS`, ex. **AAPL**, **MSFT**, **SPY**, **COPX**, **XLE**) → `AssetPriceHistory`; FRED (séries em `MARKET_WORKER_FRED_SERIES`, ex. **DFF**, **DCOILWTICO**, **VIXCLS**, **DEXUSEU**, **CPIAUCSL**) → `MacroIndicator`. HTTP **429** apenas gera log. |
+| **newsAnalysis** | `0 8 * * *` (todo dia 08:00) | `CRON_TZ` | NewsAPI (`everything`) com várias queries em `NEWS_ANALYSIS_QUERIES`; heurística `analyzeSentimentAndRisk` → nota 1–10 em `MacroIndicator` (`CODECHROMA_GEO_RISK_NLP`) + `NewsRecord` (dedupe por `url`). |
+| **climate** | `15 7 * * *` (todo dia 07:15) | `CRON_TZ` | Open-Meteo Archive → `ClimateObservation` para cada chave em `CLIMATE_REGION_KEYS` (coordenadas em `CLIMATE_REGION_PRESETS`). Sem chaves de região, o worker não faz pedidos. |
 
 - **Mock Alpha Vantage:** `ALPHA_VANTAGE_USE_MOCK=true` (ou ausência de chave, com aviso no log) usa fechamentos simulados sem rede.
 - **Política:** o frontend **não** chama APIs externas; apenas este backend ingere e persiste.
@@ -456,7 +476,7 @@ O backend exige `SUPABASE_URL` e `SUPABASE_ANON_KEY` no ambiente (validação de
 src/
   app.ts                 # Express, pino-http, rotas, error handler
   index.ts               # Bootstrap + workers
-  workers.ts             # Registro node-cron (mercado + notícias)
+  workers.ts             # Registro node-cron (mercado + notícias + clima)
   config/                # env, apiVersion, ingestion
   controllers/
   middleware/            # validação query, headers versão, erros

@@ -2,8 +2,11 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabaseClient";
+
+import { getAccessToken } from "@/lib/authSession";
 import { useWalletStore } from "@/store/useWalletStore";
+
+const AUTH_KEY = "codechroma.auth.session";
 
 export function DashboardAuthShell({ children }: { children: ReactNode }) {
   const router = useRouter();
@@ -13,12 +16,8 @@ export function DashboardAuthShell({ children }: { children: ReactNode }) {
     let cancelled = false;
 
     const boot = async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (cancelled) return;
-      if (!session) {
-        router.replace("/login");
+      if (!getAccessToken()) {
+        if (!cancelled) router.replace("/login");
         return;
       }
       await useWalletStore.getState().fetchWallet();
@@ -27,23 +26,18 @@ export function DashboardAuthShell({ children }: { children: ReactNode }) {
 
     void boot();
 
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (cancelled) return;
-      if (event === "SIGNED_OUT" || !session) {
+    function onStorage(e: StorageEvent) {
+      if (e.key !== AUTH_KEY) return;
+      if (e.newValue === null) {
         useWalletStore.getState().resetWallet();
         router.replace("/login");
-        return;
       }
-      if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
-        await useWalletStore.getState().fetchWallet();
-      }
-    });
+    }
 
+    window.addEventListener("storage", onStorage);
     return () => {
       cancelled = true;
-      subscription.unsubscribe();
+      window.removeEventListener("storage", onStorage);
     };
   }, [router]);
 

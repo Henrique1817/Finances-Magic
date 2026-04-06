@@ -3,13 +3,12 @@
 import { useEffect, useId, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { isAxiosError } from "axios";
 import { GoogleOAuthButton } from "@/components/auth/GoogleOAuthButton";
-import { formatAuthError } from "@/lib/formatAuthError";
-import {
-  describeSupabaseAuthException,
-  isSupabaseBrowserConfigured,
-  supabase,
-} from "@/lib/supabaseClient";
+import { formatApiAuthMessage } from "@/lib/formatAuthError";
+import { loginWithPassword } from "@/lib/authApi";
+import { hasAuthSession } from "@/lib/authSession";
+import { messageFromApiError } from "@/lib/apiErrorMessage";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -20,9 +19,7 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) router.replace("/");
-    });
+    if (hasAuthSession()) router.replace("/");
   }, [router]);
 
   async function handleSubmit(e: FormEvent) {
@@ -36,30 +33,25 @@ export default function LoginPage() {
       setError("A senha deve ter pelo menos 6 caracteres.");
       return;
     }
-    if (!isSupabaseBrowserConfigured()) {
-      setError(
-        "Configure o Supabase no frontend: crie `frontend/.env.local` com NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_ANON_KEY (mesmos valores de Settings → API no painel). Depois reinicie `npm run dev`.",
-      );
-      return;
-    }
     setLoading(true);
     try {
-      const { error: signErr } = await supabase.auth.signInWithPassword({
-        email: email.trim().toLowerCase(),
-        password,
-      });
-      if (signErr) {
-        setError(
-          signErr.message === "Invalid login credentials"
-            ? "E-mail ou senha incorretos. Se criou a conta só com Google, use «Continuar com Google»."
-            : formatAuthError(signErr),
-        );
-        return;
-      }
+      await loginWithPassword(email.trim().toLowerCase(), password);
       router.replace("/");
       router.refresh();
     } catch (e) {
-      setError(describeSupabaseAuthException(e));
+      if (isAxiosError(e)) {
+        const body = e.response?.data;
+        const msg =
+          body &&
+          typeof body === "object" &&
+          "error" in body &&
+          typeof (body as { error: unknown }).error === "string"
+            ? (body as { error: string }).error
+            : messageFromApiError(e);
+        setError(formatApiAuthMessage(msg));
+      } else {
+        setError(e instanceof Error ? e.message : "Erro ao entrar.");
+      }
     } finally {
       setLoading(false);
     }
@@ -76,7 +68,7 @@ export default function LoginPage() {
             Entrar
           </h1>
           <p className="mt-2 text-sm text-slate-400">
-            E-mail e senha ou conta Google (OAuth).
+            E-mail e senha ou conta Google (OAuth via API).
           </p>
         </div>
 

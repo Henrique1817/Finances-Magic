@@ -1,4 +1,4 @@
-import type { Request, Response } from "express";
+﻿import type { Request, Response } from "express";
 import { API_ROUTE_VERSION, API_SEMANTIC_VERSION } from "../config/apiVersion";
 import { sendSuccess } from "../lib/http";
 
@@ -9,6 +9,38 @@ export function getApiV1Root(_req: Request, res: Response): void {
     routeVersion: API_ROUTE_VERSION,
     basePath: `/api/${API_ROUTE_VERSION}`,
     endpoints: {
+      auth: {
+        login: {
+          method: "POST",
+          path: `/api/${API_ROUTE_VERSION}/auth/login`,
+          body: { email: "string", password: "string (mín. 6)" },
+        },
+        register: {
+          method: "POST",
+          path: `/api/${API_ROUTE_VERSION}/auth/register`,
+          body: { email: "string", password: "string (mín. 6)" },
+        },
+        refresh: {
+          method: "POST",
+          path: `/api/${API_ROUTE_VERSION}/auth/refresh`,
+          body: { refresh_token: "string" },
+        },
+        me: {
+          method: "GET",
+          path: `/api/${API_ROUTE_VERSION}/auth/me`,
+          auth: "Bearer obrigatório",
+        },
+        oauthGoogle: {
+          method: "GET",
+          path: `/api/${API_ROUTE_VERSION}/auth/oauth/google`,
+          query: { redirect_to: "URL do front (/auth/callback), origem em FRONTEND_ORIGINS" },
+        },
+        oauthCallback: {
+          method: "GET",
+          path: `/api/${API_ROUTE_VERSION}/auth/oauth/callback`,
+          note: "Callback Supabase; redireciona ao front com tokens no fragmento.",
+        },
+      },
       assets: {
         search: {
           method: "GET",
@@ -42,6 +74,32 @@ export function getApiV1Root(_req: Request, res: Response): void {
             aiDemandIncrease: "number (>= 0)",
             portfolioValue: "number (> 0)",
           },
+        },
+      },
+      ai: {
+        scenario: {
+          method: "POST",
+          path: `/api/${API_ROUTE_VERSION}/ai/scenario`,
+          auth: "Bearer obrigatório",
+          body: { message: "string (cenário em linguagem natural)" },
+          note: "Persiste cenário; resposta inclui scenarioId e title. GEMINI_API_KEY; limite 5 req/min por IP.",
+        },
+      },
+      scenarios: {
+        list: {
+          method: "GET",
+          path: `/api/${API_ROUTE_VERSION}/scenarios`,
+          auth: "Bearer obrigatório",
+        },
+        get: {
+          method: "GET",
+          path: `/api/${API_ROUTE_VERSION}/scenarios/:scenarioId`,
+          auth: "Bearer obrigatório",
+        },
+        delete: {
+          method: "DELETE",
+          path: `/api/${API_ROUTE_VERSION}/scenarios/:scenarioId`,
+          auth: "Bearer obrigatório",
         },
       },
     },
