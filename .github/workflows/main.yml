@@ -22,6 +22,9 @@ jobs:
         run: npm ci
 
       - name: Run tests (Vitest)
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL || vars.DATABASE_URL }}
+          DIRECT_URL: ${{ secrets.DIRECT_URL || vars.DIRECT_URL }}
         run: npm run test
 
       - name: Lint (ESLint)
