@@ -61,9 +61,9 @@ export function GoogleOAuthButton({
       type="button"
       disabled={disabled || busy}
       onClick={() => handleClick()}
-      className="flex w-full items-center justify-center gap-3 rounded-xl border border-white/15 bg-white/[0.07] px-4 py-2.5 text-sm font-medium text-white shadow-sm transition hover:border-white/25 hover:bg-white/[0.1] disabled:cursor-not-allowed disabled:opacity-50"
+      className="group flex w-full items-center justify-center gap-3 rounded-xl border border-white/20 bg-white/[0.06] px-4 py-2.5 text-sm font-medium text-slate-100 shadow-[0_10px_25px_rgba(2,6,23,0.35)] transition hover:border-cyan-300/45 hover:bg-white/[0.1] hover:shadow-[0_12px_32px_rgba(34,211,238,0.2)] disabled:cursor-not-allowed disabled:opacity-50"
     >
-      <GoogleIcon className="h-5 w-5 shrink-0" />
+      <GoogleIcon className="h-5 w-5 shrink-0 transition group-hover:scale-[1.03]" />
       {busy ? "A abrir…" : label}
     </button>
   );
