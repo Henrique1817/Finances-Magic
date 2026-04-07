@@ -5,15 +5,18 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import gsap from "gsap";
 import { useWalletStore } from "@/store/useWalletStore";
 import { postSimulationRun, type SimulationRunData } from "@/lib/simulationApi";
-import { postAiScenario, type AiScenarioQuant, type AiScenarioResponse } from "@/lib/scenarioAiApi";
+import { postAiScenario, type AiScenarioResponse } from "@/lib/scenarioAiApi";
 import {
   fetchScenarioDetail,
   fetchScenariosList,
   type ScenarioListItem,
 } from "@/lib/scenariosApi";
 import { formatBRL } from "@/lib/formatBRL";
-import { SimulatorAtmosphere } from "@/components/simulator/SimulatorAtmosphere";
 import { ScenarioImpactCharts } from "@/components/simulator/ScenarioImpactCharts";
+import { Layout } from "@/components/simulator/Layout";
+
+const VISUAL_SCENE_EVENT = "codechroma:visual-scene";
+const VISUAL_BEAT_EVENT = "codechroma:visual-beat";
 
 const CHIPS = [
   "E se o petróleo WTI cair 20%?",
@@ -80,15 +83,6 @@ function riskToRgb(risk01: number) {
   return `rgb(${r}, ${g}, ${b})`;
 }
 
-function heightsFromQuant(quant: AiScenarioQuant | null): number[] {
-  if (!quant?.perLine?.length) return [];
-  const raw = quant.perLine.map((l) =>
-    Math.min(1, Math.abs(l.combinedReturnDecimal) * 8 + 0.12),
-  );
-  const mx = Math.max(...raw, 0.01);
-  return raw.map((v: number) => v / mx);
-}
-
 export function SimulatorWorkspace() {
   const walletLoading = useWalletStore((s) => s.walletLoading);
   const walletReady = useWalletStore((s) => s.walletReady);
@@ -115,6 +109,14 @@ export function SimulatorWorkspace() {
     if (mq.matches) setRailOpen(true);
   }, []);
 
+  useEffect(() => {
+    const media = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const sync = () => setReduceMotion(media.matches);
+    sync();
+    media.addEventListener("change", sync);
+    return () => media.removeEventListener("change", sync);
+  }, []);
+
   const [draftMessage, setDraftMessage] = useState("");
   const [iaLoading, setIaLoading] = useState(false);
   const [iaError, setIaError] = useState<string | null>(null);
@@ -126,10 +128,13 @@ export function SimulatorWorkspace() {
   const [loadingStress, setLoadingStress] = useState(false);
   const [stressError, setStressError] = useState<string | null>(null);
   const [stressResult, setStressResult] = useState<SimulationRunData | null>(null);
+  const [cinematicMode, setCinematicMode] = useState(true);
+  const [reduceMotion, setReduceMotion] = useState(false);
 
   const mainRef = useRef<HTMLDivElement>(null);
   const projectedRef = useRef<HTMLDivElement>(null);
   const skipShake = useRef(true);
+  const sceneTimelineRef = useRef<gsap.core.Timeline | null>(null);
 
   const refreshScenariosList = useCallback(async () => {
     setListError(null);
@@ -279,17 +284,346 @@ export function SimulatorWorkspace() {
   }
 
   const canStress = listReady && portfolioValue > 0;
-  const barHeights = heightsFromQuant(displayResponse?.quant ?? null);
+  useEffect(() => {
+    const root = mainRef.current;
+    if (!root) return;
+    sceneTimelineRef.current?.kill();
+    sceneTimelineRef.current = null;
+
+    const scene = displayResponse?.narrative?.visualScene;
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent(VISUAL_SCENE_EVENT, {
+          detail:
+            cinematicMode && !reduceMotion
+              ? scene ?? { id: "default", intensity: 0.2, motion: "calm", palette: "default" }
+              : { id: "default", intensity: 0.15, motion: "calm", palette: "default" },
+        }),
+      );
+    }
+    if (!cinematicMode || reduceMotion) return;
+    if (!scene || scene.id === "default") return;
+
+    const intensity = Math.max(0, Math.min(1, scene.intensity ?? 0.5));
+    const duration = Math.max(0.6, Math.min(8, (scene.durationMs ?? 1800) / 1000));
+    const chart = root.querySelector("[data-visual-chart]") as HTMLElement | null;
+    const cards = Array.from(root.querySelectorAll("[data-visual-card]")) as HTMLElement[];
+    const headings = Array.from(root.querySelectorAll("[data-visual-heading]")) as HTMLElement[];
+    const badge = root.querySelector("[data-visual-scene-badge]") as HTMLElement | null;
+
+    const tl = gsap.timeline();
+    sceneTimelineRef.current = tl;
+
+    if (scene.id === "apocalypse") {
+      tl.to(root, { filter: "saturate(0.74) contrast(1.08)", duration: duration * 0.2, ease: "power2.out" });
+      if (chart) {
+        tl.fromTo(
+          chart,
+          { scale: 1, rotate: 0 },
+          { scale: 1 - 0.08 * intensity, rotate: -2.5 * intensity, duration: duration * 0.35, ease: "power3.out" },
+          "<",
+        );
+      }
+      cards.forEach((card, i) => {
+        tl.to(
+          card,
+          {
+            x: (i % 2 === 0 ? -1 : 1) * (26 + i * 8) * intensity,
+            y: (12 + i * 10) * intensity,
+            rotate: (i % 2 === 0 ? -1 : 1) * (6 + i * 2) * intensity,
+            opacity: 0.93,
+            duration: duration * 0.42,
+            ease: "power2.out",
+          },
+          "<",
+        );
+      });
+      tl.to(headings, { letterSpacing: "0.14em", duration: duration * 0.2, ease: "power1.out" }, "<");
+      tl.to(root, { x: 10 * intensity, duration: 0.06, yoyo: true, repeat: 5, ease: "power1.inOut" });
+    } else if (scene.id === "oil-collapse") {
+      tl.to(root, { backgroundColor: "rgba(24,13,5,0.16)", duration: duration * 0.3, ease: "power2.out" });
+      if (chart) {
+        tl.fromTo(
+          chart,
+          { boxShadow: "0 0 0 rgba(251,146,60,0)", y: 0 },
+          {
+            boxShadow: `0 0 ${28 + 40 * intensity}px rgba(251,146,60,${0.15 + 0.3 * intensity})`,
+            y: 6 * intensity,
+            duration: duration * 0.35,
+            ease: "sine.inOut",
+          },
+          "<",
+        );
+      }
+      tl.to(
+        cards,
+        {
+          y: (i) => (i % 2 === 0 ? 5 : -5) * intensity,
+          duration: duration * 0.25,
+          stagger: 0.05,
+          yoyo: true,
+          repeat: 1,
+          ease: "sine.inOut",
+        },
+        "<",
+      );
+    } else if (scene.id === "geopolitical-shock") {
+      tl.to(root, { filter: "hue-rotate(-12deg) saturate(1.1)", duration: duration * 0.2, ease: "power2.out" });
+      tl.to([chart, ...cards].filter(Boolean), {
+        x: 6 * intensity,
+        duration: 0.08,
+        yoyo: true,
+        repeat: 7,
+        ease: "power1.inOut",
+      });
+    }
+
+    if (badge) {
+      tl.fromTo(
+        badge,
+        { opacity: 0, y: 8 },
+        { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" },
+        0,
+      );
+    }
+
+    return () => {
+      sceneTimelineRef.current?.kill();
+      sceneTimelineRef.current = null;
+      gsap.set([root, chart, ...cards, ...headings, badge].filter(Boolean), { clearProps: "all" });
+    };
+  }, [displayResponse, cinematicMode, reduceMotion]);
+
+  useEffect(() => {
+    if (!cinematicMode || reduceMotion) return;
+    const root = mainRef.current;
+    const blocks = Array.from(root?.querySelectorAll("[data-analysis-block]") ?? []) as HTMLElement[];
+    if (!root || blocks.length === 0) return;
+    const scene = displayResponse?.narrative?.visualScene;
+    const intensity = Math.max(0, Math.min(1, scene?.intensity ?? 0.4));
+    const timeline = gsap.timeline({ delay: 0.25 });
+
+    blocks.forEach((block, idx) => {
+      timeline.fromTo(
+        block,
+        { opacity: 0.72, y: 8, boxShadow: "0 0 0 rgba(34,211,238,0)" },
+        {
+          opacity: 1,
+          y: 0,
+          boxShadow: `0 0 ${14 + intensity * 20}px rgba(34,211,238,${0.18 + intensity * 0.22})`,
+          duration: 0.3,
+          ease: "power2.out",
+          onStart: () => {
+            window.dispatchEvent(
+              new CustomEvent(VISUAL_BEAT_EVENT, {
+                detail: { kind: scene?.id ?? "default", strength: Math.min(1, 0.35 + intensity + idx * 0.06) },
+              }),
+            );
+          },
+          onComplete: () => {
+            gsap.to(block, { boxShadow: "0 0 0 rgba(34,211,238,0)", duration: 0.35, ease: "power1.out" });
+          },
+        },
+      );
+    });
+
+    return () => {
+      timeline.kill();
+    };
+  }, [displayResponse, cinematicMode, reduceMotion]);
+
+  const commandBar = (
+    <div className="px-3 py-3 sm:px-4 sm:py-4 md:px-8 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+      <div className="mx-auto max-w-5xl space-y-3">
+        {iaError ? (
+          <p className="rounded-lg border border-rose-500/30 bg-rose-950/40 px-3 py-2 text-xs text-rose-200">
+            {iaError}
+          </p>
+        ) : null}
+        <div className="flex items-end gap-2 rounded-2xl border border-white/15 bg-slate-900/85 p-2 shadow-[0_12px_40px_rgba(2,6,23,0.6),0_0_30px_rgba(34,211,238,0.08)]">
+          <textarea
+            value={draftMessage}
+            onChange={(e) => setDraftMessage(e.target.value)}
+            rows={2}
+            maxLength={4000}
+            placeholder="Descreva o cenário possível…"
+            className="max-h-40 min-h-[44px] flex-1 resize-y bg-transparent px-3 py-2 text-base text-slate-100 placeholder:text-slate-400 focus:outline-none"
+          />
+          <button
+            type="button"
+            disabled={iaLoading}
+            onClick={() => void runScenarioIa()}
+            className="mb-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-500 to-violet-600 text-lg font-bold text-slate-950 shadow-lg transition enabled:hover:opacity-95 disabled:opacity-40"
+            aria-label="Analisar cenário"
+          >
+            {iaLoading ? (
+              <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-900/40 border-t-slate-900" />
+            ) : (
+              "→"
+            )}
+          </button>
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-300">
+          <span>
+            Carteira (mercado):{" "}
+            <span className="font-mono text-slate-100">{!listReady ? "…" : formatBRL(portfolioValue)}</span>
+          </span>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setCinematicMode((v) => !v)}
+              className="rounded-md border border-white/15 bg-white/5 px-2 py-0.5 text-[11px] text-slate-200 transition hover:bg-white/10"
+            >
+              Cinemático: {cinematicMode ? "on" : "off"}
+            </button>
+            <span>{draftMessage.length}/4000</span>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setStressOpen((o) => !o)}
+          className="text-sm text-slate-300 underline decoration-slate-500 underline-offset-2 hover:text-slate-100"
+        >
+          {stressOpen ? "Ocultar" : "Mostrar"} simulação por sliders (modo clássico)
+        </button>
+
+        {stressOpen ? (
+          <div className="space-y-4 rounded-xl border border-white/10 bg-slate-900/50 p-4">
+            <SliderRow
+              id="sw-energy"
+              label="Custo de energia"
+              hint="Choque sobre margens (tech)."
+              min={0}
+              max={100}
+              step={1}
+              value={energy}
+              onChange={setEnergy}
+              suffix="%"
+            />
+            <SliderRow
+              id="sw-geo"
+              label="Risco geopolítico"
+              hint="1–10"
+              min={1}
+              max={10}
+              step={1}
+              value={geo}
+              onChange={setGeo}
+            />
+            <SliderRow
+              id="sw-ai"
+              label="Demanda IA"
+              hint="Correlação tech / mineração."
+              min={0}
+              max={100}
+              step={1}
+              value={aiDemand}
+              onChange={setAiDemand}
+              suffix="%"
+            />
+            <div
+              ref={projectedRef}
+              className="rounded-xl border-2 border-emerald-500/30 bg-slate-950/50 px-4 py-3"
+              style={{ willChange: "transform" }}
+            >
+              <p className="text-xs font-semibold uppercase tracking-wider text-slate-300">
+                Pré-visualização património
+              </p>
+              <p className="mt-1 font-mono text-lg text-white">{formatBRL(portfolioValue)}</p>
+            </div>
+            {stressError ? <p className="text-xs text-rose-300">{stressError}</p> : null}
+            <button
+              type="button"
+              disabled={!canStress || loadingStress}
+              onClick={() => void handleStressRun()}
+              className="w-full rounded-xl bg-white/10 py-2.5 text-sm font-medium text-slate-200 transition enabled:hover:bg-white/15 disabled:opacity-40"
+            >
+              {loadingStress ? "A calcular…" : "Correr stress clássico"}
+            </button>
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+
+  const desktopSidebar = (
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex h-14 items-center border-b border-white/10 px-4">
+        <span className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-300/90">
+          Cenarios
+        </span>
+      </div>
+      <div className="flex min-h-0 flex-1 flex-col p-4">
+        <button
+          type="button"
+          onClick={handleNewScenario}
+          className="mb-4 flex w-full items-center justify-center gap-2 rounded-xl border border-cyan-500/35 bg-cyan-500/10 py-2.5 text-sm font-semibold text-cyan-100 transition hover:bg-cyan-500/20"
+        >
+          <span className="text-lg leading-none">+</span>
+          Novo cenario
+        </button>
+        <nav className="simulator-rail-scroll min-h-0 flex-1 space-y-1 overflow-y-auto pr-1">
+        {listError ? (
+          <div className="space-y-2 px-2">
+            <p className="text-xs text-rose-300">{listError}</p>
+            <button
+              type="button"
+              onClick={() => void refreshScenariosList()}
+              className="text-xs text-cyan-400 underline"
+            >
+              Tentar novamente
+            </button>
+          </div>
+        ) : listLoading ? (
+          <p className="px-2 text-sm text-slate-300">A sincronizar com o servidor...</p>
+        ) : scenarios.length === 0 ? (
+          <p className="px-2 text-sm leading-relaxed text-slate-300">
+            Nenhum cenario na conta. Envie uma analise abaixo e ela ficara guardada no servidor.
+          </p>
+        ) : (
+          scenarios.map((s) => {
+            const active = s.id === activeId;
+            return (
+              <button
+                key={s.id}
+                type="button"
+                onClick={() => void handleSelectScenario(s.id)}
+                className={`flex w-full items-start gap-2 rounded-xl px-3 py-2.5 text-left text-sm transition ${
+                  active
+                    ? "bg-gradient-to-r from-cyan-500/20 to-violet-600/15 text-white"
+                    : "text-slate-200 hover:bg-white/5 hover:text-white"
+                }`}
+              >
+                <span className="mt-0.5 text-slate-600" aria-hidden>
+                  #
+                </span>
+                <span className="line-clamp-2">{s.title}</span>
+              </button>
+            );
+          })
+        )}
+        </nav>
+        <Link
+          href="/"
+          className="mt-4 block rounded-xl border border-white/10 px-3 py-2 text-center text-xs text-slate-400 transition hover:border-cyan-500/25 hover:text-slate-200"
+        >
+          Voltar ao painel
+        </Link>
+      </div>
+    </div>
+  );
 
   return (
-    <div className="flex w-full min-h-0 flex-1 bg-[#020617] text-slate-100">
+    <Layout footer={commandBar} sidebar={desktopSidebar}>
+      <div className="flex h-full w-full min-h-0 flex-1 overflow-hidden bg-transparent text-slate-100">
       {/* Rail cenários — mobile: drawer; desktop: coluna colapsável */}
       <aside
-        className={`fixed inset-y-0 left-0 z-30 flex w-[min(86vw,280px)] flex-col border-r border-white/10 bg-slate-950/95 backdrop-blur-xl transition-transform duration-300 md:static md:z-20 md:bg-slate-950/90 ${
-          railOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
-        } ${railOpen ? "md:w-[min(100%,280px)]" : "md:w-14"}`}
+        className={`fixed inset-y-0 left-0 z-30 flex w-[min(86vw,280px)] flex-col border-r border-white/10 bg-slate-950/95 backdrop-blur-xl transition-transform duration-300 md:hidden ${
+          railOpen ? "translate-x-0" : "-translate-x-full"
+        }`}
       >
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-3 md:p-4">
+        <div className="simulator-rail-scroll flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain p-3 md:p-4">
           <div className="mb-4 flex items-center justify-between gap-2">
             <button
               type="button"
@@ -321,7 +655,7 @@ export function SimulatorWorkspace() {
                 <span className="text-lg leading-none">+</span>
                 Novo cenário
               </button>
-              <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto pr-1">
+              <nav className="min-h-0 flex-1 space-y-1 pr-1">
                 {listError ? (
                   <div className="space-y-2 px-2">
                     <p className="text-xs text-rose-300">{listError}</p>
@@ -392,11 +726,8 @@ export function SimulatorWorkspace() {
       ) : null}
 
       <div ref={mainRef} className="relative flex min-h-0 min-w-0 flex-1 flex-col">
-        <SimulatorAtmosphere barHeights={barHeights} />
-        <div className="pointer-events-none absolute inset-0 z-[1] bg-[radial-gradient(circle_at_50%_10%,rgba(15,23,42,0)_0%,rgba(2,6,23,0.65)_48%,rgba(2,6,23,0.95)_100%)]" />
-
-        <div className="relative z-10 flex min-h-0 flex-1 flex-col overflow-y-auto">
-          <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col px-3 pb-[max(7rem,env(safe-area-inset-bottom))] pt-6 sm:px-4 sm:pb-28 sm:pt-8 md:px-8 md:pb-32 md:pt-12">
+        <div className="relative z-10 flex min-h-0 flex-1 flex-col">
+          <div className="mx-auto flex w-full max-w-5xl flex-col px-3 pb-[max(9rem,env(safe-area-inset-bottom))] pt-0 sm:px-4 sm:pb-32 sm:pt-0 md:px-6 md:pb-36 md:pt-0 lg:px-8 lg:pb-36 lg:pt-8">
             <div className="mb-2 flex items-center justify-between gap-3 md:hidden">
               <button
                 type="button"
@@ -413,10 +744,10 @@ export function SimulatorWorkspace() {
             <p className="text-center text-sm font-semibold uppercase tracking-[0.25em] text-slate-300">
               Simulação inteligente
             </p>
-            <h2 className="mt-3 text-center text-2xl font-semibold leading-tight text-white sm:text-3xl md:text-4xl">
+            <h2 data-visual-heading className="mt-3 text-center text-3xl font-medium leading-tight tracking-tight text-zinc-100 sm:text-3xl md:text-4xl">
               Olá. Que cenário quer testar?
             </h2>
-            <p className="mx-auto mt-2 max-w-lg text-center text-sm text-slate-200 sm:text-base">
+            <p className="mx-auto mt-2 max-w-3xl text-center text-sm text-slate-200 sm:text-base">
               Descreva um evento possível (mercado, macro, geopolítica). A Code Chroma estima o
               impacto na sua carteira e mostra gráficos interativos — não é recomendação de
               investimento.
@@ -435,7 +766,7 @@ export function SimulatorWorkspace() {
               ))}
             </div>
 
-            <div data-scenario-result className="mt-10 space-y-6">
+            <div data-scenario-result className="mt-6 space-y-5">
               {detailError ? (
                 <p
                   className="rounded-xl border border-rose-500/30 bg-rose-950/40 px-4 py-3 text-base text-rose-100"
@@ -455,11 +786,54 @@ export function SimulatorWorkspace() {
               ) : null}
 
               {!detailLoading && displayResponse ? (
-                <div className="rounded-2xl border border-white/15 bg-slate-950/70 p-5 shadow-[0_16px_50px_rgba(2,6,23,0.7)] backdrop-blur-xl">
+                <div data-visual-card className="rounded-2xl border border-white/15 bg-slate-950/70 p-5 shadow-[0_16px_50px_rgba(2,6,23,0.7)] backdrop-blur-xl">
                   <h3 className="text-sm font-semibold uppercase tracking-wider text-slate-300">
                     Leitura IA
                   </h3>
+                  {displayResponse.narrative.visualScene?.id && displayResponse.narrative.visualScene.id !== "default" ? (
+                    <p data-visual-scene-badge className="mt-2 inline-flex rounded-full border border-white/15 bg-white/5 px-2.5 py-1 text-[11px] text-slate-200">
+                      Cena visual: {displayResponse.narrative.visualScene.id}
+                    </p>
+                  ) : null}
                   <p className="mt-2 text-base text-slate-100">{displayResponse.narrative.summary}</p>
+                  {displayResponse.narrative.analysisBlocks && displayResponse.narrative.analysisBlocks.length > 0 ? (
+                    <div className="mt-4 space-y-3">
+                      {displayResponse.narrative.analysisBlocks.map((b, i) => (
+                        <div
+                          key={`${b.title}-${i}`}
+                          data-analysis-block
+                          data-visual-card
+                          data-analysis-index={i}
+                          className="rounded-xl border border-white/10 bg-white/[0.02] p-3"
+                        >
+                          <p className="text-sm font-semibold text-violet-100">{b.title}</p>
+                          <p className="mt-1 text-sm leading-relaxed text-slate-200">{b.content}</p>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                  {displayResponse.narrative.causalChain && displayResponse.narrative.causalChain.length > 0 ? (
+                    <div className="mt-4 rounded-xl border border-white/10 bg-white/[0.02] p-3">
+                      <p className="text-xs font-semibold uppercase tracking-wider text-slate-300">
+                        Cadeia causal (causa → transmissão → efeito)
+                      </p>
+                      <ul className="mt-2 space-y-2">
+                        {displayResponse.narrative.causalChain.map((c, idx) => (
+                          <li key={`${c.cause}-${idx}`} className="rounded-lg border border-white/10 bg-slate-950/40 p-2.5">
+                            <p className="text-sm text-slate-100">
+                              <span className="font-semibold text-violet-100">Causa:</span> {c.cause}
+                            </p>
+                            <p className="mt-1 text-sm text-slate-200">
+                              <span className="font-semibold text-cyan-100">Transmissão:</span> {c.transmission}
+                            </p>
+                            <p className="mt-1 text-sm text-slate-200">
+                              <span className="font-semibold text-amber-100">Efeito:</span> {c.effect}
+                            </p>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
                   {displayResponse.narrative.factorsUsed.length > 0 ? (
                     <div className="mt-4">
                       <p className="text-xs font-semibold uppercase tracking-wider text-slate-300">
@@ -525,119 +899,37 @@ export function SimulatorWorkspace() {
                   </dl>
                 </div>
               ) : null}
-            </div>
-          </div>
 
-          {/* Input bar — estilo Gemini */}
-          <div className="sticky bottom-0 z-20 border-t border-white/10 bg-slate-950/88 px-3 py-3 backdrop-blur-xl sm:px-4 sm:py-4 md:px-8 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-            <div className="mx-auto max-w-3xl space-y-3">
-              {iaError ? (
-                <p className="rounded-lg border border-rose-500/30 bg-rose-950/40 px-3 py-2 text-xs text-rose-200">
-                  {iaError}
-                </p>
-              ) : null}
-              <div className="flex items-end gap-2 rounded-2xl border border-white/15 bg-slate-900/85 p-2 shadow-[0_12px_40px_rgba(2,6,23,0.6),0_0_30px_rgba(34,211,238,0.08)]">
-                <textarea
-                  value={draftMessage}
-                  onChange={(e) => setDraftMessage(e.target.value)}
-                  rows={2}
-                  maxLength={4000}
-                  placeholder="Descreva o cenário possível…"
-                  className="max-h-40 min-h-[44px] flex-1 resize-y bg-transparent px-3 py-2 text-base text-slate-100 placeholder:text-slate-400 focus:outline-none"
-                />
-                <button
-                  type="button"
-                  disabled={iaLoading}
-                  onClick={() => void runScenarioIa()}
-                  className="mb-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-500 to-violet-600 text-lg font-bold text-slate-950 shadow-lg transition enabled:hover:opacity-95 disabled:opacity-40"
-                  aria-label="Analisar cenário"
-                >
-                  {iaLoading ? (
-                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-900/40 border-t-slate-900" />
-                  ) : (
-                    "→"
-                  )}
-                </button>
-              </div>
-              <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-300">
-                <span>
-                  Carteira (mercado):{" "}
-                  <span className="font-mono text-slate-100">
-                    {!listReady ? "…" : formatBRL(portfolioValue)}
-                  </span>
-                </span>
-                <span>{draftMessage.length}/4000</span>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => setStressOpen((o) => !o)}
-                className="text-sm text-slate-300 underline decoration-slate-500 underline-offset-2 hover:text-slate-100"
-              >
-                {stressOpen ? "Ocultar" : "Mostrar"} simulação por sliders (modo clássico)
-              </button>
-
-              {stressOpen ? (
-                <div className="space-y-4 rounded-xl border border-white/10 bg-slate-900/50 p-4">
-                  <SliderRow
-                    id="sw-energy"
-                    label="Custo de energia"
-                    hint="Choque sobre margens (tech)."
-                    min={0}
-                    max={100}
-                    step={1}
-                    value={energy}
-                    onChange={setEnergy}
-                    suffix="%"
-                  />
-                  <SliderRow
-                    id="sw-geo"
-                    label="Risco geopolítico"
-                    hint="1–10"
-                    min={1}
-                    max={10}
-                    step={1}
-                    value={geo}
-                    onChange={setGeo}
-                  />
-                  <SliderRow
-                    id="sw-ai"
-                    label="Demanda IA"
-                    hint="Correlação tech / mineração."
-                    min={0}
-                    max={100}
-                    step={1}
-                    value={aiDemand}
-                    onChange={setAiDemand}
-                    suffix="%"
-                  />
-                  <div
-                    ref={projectedRef}
-                    className="rounded-xl border-2 border-emerald-500/30 bg-slate-950/50 px-4 py-3"
-                    style={{ willChange: "transform" }}
-                  >
-                    <p className="text-xs font-semibold uppercase tracking-wider text-slate-300">
-                      Pré-visualização património
-                    </p>
-                    <p className="mt-1 font-mono text-lg text-white">{formatBRL(portfolioValue)}</p>
+              {!detailLoading && !detailError && !displayResponse && !stressResult ? (
+                <div className="rounded-2xl border border-white/10 bg-slate-950/45 p-5 backdrop-blur-xl">
+                  <p className="text-sm font-semibold uppercase tracking-wider text-slate-300">
+                    Resultados da IA
+                  </p>
+                  <p className="mt-2 text-sm text-slate-200">
+                    Envie um cenário acima para abrir a análise com impacto por ativo, narrativa de
+                    risco e sinais de confiança.
+                  </p>
+                  <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                    <div className="rounded-xl border border-white/10 bg-white/[0.02] p-3">
+                      <p className="text-xs uppercase tracking-wider text-slate-400">Gráficos</p>
+                      <p className="mt-1 text-sm text-slate-200">Distribuição de impacto e retorno.</p>
+                    </div>
+                    <div className="rounded-xl border border-white/10 bg-white/[0.02] p-3">
+                      <p className="text-xs uppercase tracking-wider text-slate-400">Ativos</p>
+                      <p className="mt-1 text-sm text-slate-200">Linhas mais sensíveis da carteira.</p>
+                    </div>
+                    <div className="rounded-xl border border-white/10 bg-white/[0.02] p-3">
+                      <p className="text-xs uppercase tracking-wider text-slate-400">Insights</p>
+                      <p className="mt-1 text-sm text-slate-200">Leitura IA com fatores e evidências.</p>
+                    </div>
                   </div>
-                  {stressError ? (
-                    <p className="text-xs text-rose-300">{stressError}</p>
-                  ) : null}
-                  <button
-                    type="button"
-                    disabled={!canStress || loadingStress}
-                    onClick={() => void handleStressRun()}
-                    className="w-full rounded-xl bg-white/10 py-2.5 text-sm font-medium text-slate-200 transition enabled:hover:bg-white/15 disabled:opacity-40"
-                  >
-                    {loadingStress ? "A calcular…" : "Correr stress clássico"}
-                  </button>
                 </div>
               ) : null}
             </div>
           </div>
         </div>
       </div>
-    </div>
+      </div>
+    </Layout>
   );
 }

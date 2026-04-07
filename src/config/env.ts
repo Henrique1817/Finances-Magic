@@ -58,6 +58,17 @@ export const env = {
   /** "false" desliga o agendamento (útil em testes). */
   ingestionCronEnabled: process.env.INGESTION_CRON_ENABLED !== "false",
   /**
+   * Cotações intradiárias (Yahoo 30m) só para ativos ligados a carteiras (`wallet_assets.asset_id`).
+   * "false" desliga o cron dedicado (ingestão diária global continua igual).
+   */
+  userAssetPriceIngestEnabled: process.env.USER_ASSET_PRICE_INGEST_ENABLED !== "false",
+  /** Intervalo mínimo entre atualizações por ativo (ms). Padrão 30 min. */
+  userAssetPriceMinIntervalMs: parsePositiveInt(process.env.USER_ASSET_PRICE_MIN_INTERVAL_MS, 1_800_000),
+  /** Máx. de ativos a atualizar por execução do worker (evita rajadas na API). */
+  userAssetPriceMaxPerRun: parsePositiveInt(process.env.USER_ASSET_PRICE_MAX_PER_RUN, 40),
+  /** Pausa entre pedidos ao Yahoo neste worker (ms). */
+  userAssetPriceRequestGapMs: parsePositiveInt(process.env.USER_ASSET_PRICE_REQUEST_GAP_MS, 550),
+  /**
    * Origens CORS permitidas (separadas por vírgula).
    * Padrão: Vite e front comuns em localhost.
    * `localhost` e `127.0.0.1` são espelhados automaticamente (o browser trata como origens diferentes).

@@ -13,9 +13,9 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
 
   return (
     <AddAssetModalProvider>
-      <div className="flex min-h-dvh">
+      <div className="flex h-screen w-full overflow-hidden">
         {!isSimulator ? (
-          <div className="hidden md:block">
+          <div className="hidden h-full w-64 shrink-0 md:block">
             <Sidebar />
           </div>
         ) : null}
@@ -34,7 +34,7 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
           </div>
         ) : null}
 
-        <div className="flex min-w-0 min-h-0 flex-1 flex-col">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           <TopHeader
             onOpenSidebar={() => setMobileNav(true)}
             variant={isSimulator ? "simulator" : "default"}
@@ -43,7 +43,7 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
             className={
               isSimulator
                 ? "flex min-h-0 flex-1 flex-col overflow-hidden p-0"
-                : "flex-1 overflow-x-hidden px-3 py-5 sm:px-5 sm:py-6 md:px-8 md:py-10"
+                : "custom-scrollbar flex-1 overflow-y-auto overflow-x-hidden px-3 py-5 scroll-smooth sm:px-5 sm:py-6 md:px-8 md:py-10"
             }
           >
             {children}

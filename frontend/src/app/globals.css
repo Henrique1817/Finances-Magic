@@ -22,6 +22,22 @@
 }
 
 @layer utilities {
+  .immersive-shell {
+    @apply relative flex h-screen w-full overflow-hidden bg-transparent text-slate-100;
+  }
+
+  .immersive-sidebar {
+    @apply fixed inset-y-0 left-0 z-30 h-full w-64 border-r border-white/10 bg-white/5 backdrop-blur-2xl;
+  }
+
+  .immersive-header {
+    @apply fixed inset-x-0 top-0 z-40 h-14 border-b border-white/10 bg-transparent backdrop-blur-xl;
+  }
+
+  .immersive-footer {
+    @apply fixed bottom-0 left-0 right-0 z-40 border-t border-white/10 bg-black/25 backdrop-blur-2xl;
+  }
+
   .glass-panel {
     @apply rounded-2xl border border-white/10 bg-white/[0.06] shadow-glass backdrop-blur-xl;
     background-image: linear-gradient(
@@ -37,5 +53,120 @@
     box-shadow:
       0 0 0 1px rgba(34, 211, 238, 0.08),
       0 24px 80px rgba(0, 0, 0, 0.55);
+  }
+
+  .interactive-card {
+    --ice-x: 50%;
+    --ice-y: 50%;
+    transform-style: preserve-3d;
+    transition: box-shadow 220ms ease;
+  }
+
+  .interactive-card::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    border-radius: inherit;
+    background:
+      radial-gradient(
+        320px circle at var(--ice-x) var(--ice-y),
+        rgba(167, 243, 255, 0.2),
+        rgba(167, 243, 255, 0.05) 22%,
+        transparent 55%
+      ),
+      linear-gradient(
+        140deg,
+        rgba(255, 255, 255, 0.09) 0%,
+        rgba(255, 255, 255, 0.02) 42%,
+        rgba(34, 211, 238, 0.03) 100%
+      );
+    mix-blend-mode: screen;
+  }
+
+  .interactive-card:hover {
+    box-shadow:
+      0 0 0 1px rgba(103, 232, 249, 0.22),
+      0 10px 34px rgba(15, 23, 42, 0.55),
+      0 0 36px rgba(34, 211, 238, 0.12);
+  }
+
+  .simulator-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(34, 211, 238, 0.45) rgba(15, 23, 42, 0.55);
+  }
+
+  .simulator-rail-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(148, 163, 184, 0.45) rgba(2, 6, 23, 0.6);
+  }
+
+  .simulator-scroll::-webkit-scrollbar {
+    width: 10px;
+  }
+
+  .simulator-rail-scroll::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  .simulator-scroll::-webkit-scrollbar-track {
+    background: rgba(15, 23, 42, 0.55);
+    border-radius: 999px;
+  }
+
+  .simulator-rail-scroll::-webkit-scrollbar-track {
+    background: rgba(2, 6, 23, 0.6);
+    border-radius: 999px;
+  }
+
+  .simulator-scroll::-webkit-scrollbar-thumb {
+    background: linear-gradient(
+      180deg,
+      rgba(34, 211, 238, 0.75) 0%,
+      rgba(139, 92, 246, 0.7) 100%
+    );
+    border-radius: 999px;
+    border: 1px solid rgba(148, 163, 184, 0.25);
+  }
+
+  .simulator-rail-scroll::-webkit-scrollbar-thumb {
+    background: linear-gradient(
+      180deg,
+      rgba(100, 116, 139, 0.8) 0%,
+      rgba(148, 163, 184, 0.65) 100%
+    );
+    border-radius: 999px;
+    border: 1px solid rgba(148, 163, 184, 0.2);
+  }
+
+  .custom-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(148, 163, 184, 0.22) transparent;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 4px;
+    height: 6px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background-color: rgba(148, 163, 184, 0.26);
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    background-clip: padding-box;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(103, 232, 249, 0.36);
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-button {
+    width: 0;
+    height: 0;
+    display: none;
   }
 }

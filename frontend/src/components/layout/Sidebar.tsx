@@ -6,10 +6,15 @@ import { usePathname } from "next/navigation";
 import { logoutLocal } from "@/lib/authApi";
 import { useWalletStore } from "@/store/useWalletStore";
 
-const nav = [
-  { href: "/", label: "Início" },
-  { href: "/#carteira", label: "Carteira" },
-  { href: "/simulator", label: "Simulador" },
+const navSections = [
+  {
+    title: "Principal",
+    items: [
+      { href: "/", label: "Início" },
+      { href: "/wallet", label: "Carteira" },
+      { href: "/simulator", label: "Simulador" },
+    ],
+  },
 ];
 
 type Props = {
@@ -36,29 +41,33 @@ export function Sidebar({ onNavigate }: Props) {
           Risk OS
         </p>
       </div>
-      <nav className="flex flex-1 flex-col gap-1">
-        {nav.map((item) => {
-          const active =
-            item.href === "/"
-              ? pathname === "/"
-              : item.href.startsWith("/#")
-                ? false
-                : pathname === item.href;
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              onClick={onNavigate}
-              className={`rounded-xl px-3 py-2.5 text-sm font-medium transition ${
-                active
-                  ? "bg-gradient-to-r from-cyan-500/20 to-violet-500/15 text-white shadow-neon"
-                  : "text-slate-200 hover:bg-white/5 hover:text-white"
-              }`}
-            >
-              {item.label}
-            </Link>
-          );
-        })}
+      <nav className="flex flex-1 flex-col gap-6">
+        {navSections.map((section) => (
+          <div key={section.title}>
+            <p className="mb-2 px-3 text-[10px] uppercase tracking-[0.25em] text-slate-400">
+              {section.title}
+            </p>
+            <div className="flex flex-col gap-1">
+              {section.items.map((item) => {
+                const active = item.href === "/" ? pathname === "/" : pathname === item.href;
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    onClick={onNavigate}
+                    className={`rounded-xl px-3 py-2.5 text-sm font-medium transition ${
+                      active
+                        ? "bg-gradient-to-r from-cyan-500/20 to-violet-500/15 text-white shadow-neon"
+                        : "text-slate-200 hover:bg-white/5 hover:text-white"
+                    }`}
+                  >
+                    {item.label}
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+        ))}
       </nav>
       <div className="mt-auto space-y-3 px-2">
         <button

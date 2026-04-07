@@ -6,6 +6,7 @@ import { runMarketDataIngestion } from "./services/ingestion/marketDataWorker";
 import { runNewsAnalysisIngestion } from "./services/ingestion/newsAnalysisWorker";
 import { runScenarioOutcomeTraining } from "./services/ai/scenarioOutcomeTrainer";
 import { runAutoScenarioTraining } from "./services/ai/autoScenarioTrainerWorker";
+import { runReferencedAssetPriceIngestion } from "./services/ingestion/referencedAssetPriceWorker";
 
 const log = logger.child({ module: "workers" });
 
@@ -21,6 +22,8 @@ const CLIMATE_CRON = "15 7 * * *";
 const AI_TRAINER_CRON = "45 2 * * *";
 /** Diariamente às 03:10 no fuso `CRON_TZ`. */
 const AI_AUTO_SCENARIO_CRON = "10 3 * * *";
+/** A cada 10 min — cotações 30m só para ativos em carteiras (intervalo mín. por ativo via env). */
+const REFERENCED_ASSET_PRICE_CRON = "*/10 * * * *";
 
 /**
  * Registra os cron jobs do motor de ingestão (mercado + notícias/NLP + clima).
@@ -56,6 +59,20 @@ export function registerIngestionWorkers(): void {
     { timezone: env.cronTimezone },
   );
 
+  if (env.userAssetPriceIngestEnabled) {
+    cron.schedule(
+      REFERENCED_ASSET_PRICE_CRON,
+      () => {
+        void runReferencedAssetPriceIngestion().catch((err) =>
+          log.error({ err }, "referencedAssetPriceWorker falhou (async)"),
+        );
+      },
+      { timezone: env.cronTimezone },
+    );
+  } else {
+    log.info("Cron de cotações referenciadas desativado (USER_ASSET_PRICE_INGEST_ENABLED=false)");
+  }
+
   cron.schedule(
     AI_TRAINER_CRON,
     () => {
@@ -81,6 +98,7 @@ export function registerIngestionWorkers(): void {
       marketData: MARKET_DATA_CRON,
       newsAnalysis: NEWS_ANALYSIS_CRON,
       climate: CLIMATE_CRON,
+      referencedAssetPrice: env.userAssetPriceIngestEnabled ? REFERENCED_ASSET_PRICE_CRON : "off",
       scenarioTrainer: AI_TRAINER_CRON,
       autoScenarioTrainer: AI_AUTO_SCENARIO_CRON,
       timezone: env.cronTimezone,
@@ -94,6 +112,7 @@ export async function runAllIngestionJobsOnce(): Promise<void> {
   await runMarketDataIngestion();
   await runNewsAnalysisIngestion();
   await runClimateIngestion();
+  await runReferencedAssetPriceIngestion();
   await runScenarioOutcomeTraining();
   await runAutoScenarioTraining();
 }

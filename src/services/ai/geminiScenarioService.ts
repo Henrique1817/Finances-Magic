@@ -19,6 +19,33 @@ export type ParsedFactorsPayload = z.infer<typeof parseFactorsSchema>;
 
 const narrativeSchema = z.object({
   summary: z.string(),
+  visualScene: z
+    .object({
+      id: z.enum(["default", "apocalypse", "oil-collapse", "geopolitical-shock"]).optional(),
+      intensity: z.number().min(0).max(1).optional(),
+      palette: z.enum(["default", "danger", "amber", "cold"]).optional(),
+      motion: z.enum(["calm", "pulse", "shake", "collapse"]).optional(),
+      durationMs: z.number().int().min(300).max(15000).optional(),
+      rationale: z.string().optional(),
+    })
+    .optional(),
+  analysisBlocks: z
+    .array(
+      z.object({
+        title: z.string(),
+        content: z.string(),
+      }),
+    )
+    .optional(),
+  causalChain: z
+    .array(
+      z.object({
+        cause: z.string(),
+        transmission: z.string(),
+        effect: z.string(),
+      }),
+    )
+    .optional(),
   factorsUsed: z.array(z.string()),
   perAsset: z.array(
     z.object({
@@ -118,6 +145,31 @@ function buildMockNarrative(args: {
 }): NarrativePayload {
   return {
     summary: "Narrativa gerada em modo de teste local (mock), sem chamada ao Gemini.",
+    visualScene: {
+      id: "default",
+      intensity: 0.2,
+      palette: "default",
+      motion: "calm",
+      durationMs: 1400,
+      rationale: "Modo mock sem cena extrema.",
+    },
+    analysisBlocks: [
+      {
+        title: "Leitura estratégica",
+        content:
+          "Em modo mock, os fatores são selecionados por correspondência textual simples e devem ser tratados como rascunho analítico.",
+      },
+      {
+        title: "Impacto provável na carteira",
+        content:
+          "As variações por ativo foram calculadas por sensibilidade histórica (beta) e agregadas no retorno projetado de carteira.",
+      },
+    ],
+    causalChain: args.validatedFactors.slice(0, 3).map((f) => ({
+      cause: `Choque aplicado em ${f.catalogId}.`,
+      transmission: "O choque é transmitido via betas históricos e correlações de mercado.",
+      effect: "A carteira reage conforme a sensibilidade de cada linha ao fator.",
+    })),
     factorsUsed: args.validatedFactors.map((f) => f.catalogId),
     perAsset: args.quant.perLine.map((row) => ({
       label: row.assetSymbol ? `${row.nome} (${row.assetSymbol})` : row.nome,
@@ -345,13 +397,28 @@ export async function geminiBuildNarrative(args: {
 
   const prompt = [
     "Gera uma resposta JSON para um utilizador de uma app de carteira (português de Portugal/Brasil claro e profissional).",
+    "Pensa de forma profunda, relacionando macroeconomia, geopolítica, cadeia de suprimentos e comportamento setorial.",
+    "A resposta deve ser útil para decisão humana e explicar causalidade (por que o efeito acontece).",
     "Campos obrigatórios:",
     '- "summary": texto curto do cenário;',
+    '- "visualScene": objeto para interação visual da UI { "id","intensity","palette","motion","durationMs","rationale" };',
+    '- "analysisBlocks": array com 4-7 blocos { "title","content" } cobrindo: mecanismo causal, curto prazo, médio/longo prazo, riscos e gatilhos;',
+    '- "causalChain": array com 3-6 itens { "cause","transmission","effect" } para explicar como o choque vira impacto financeiro;',
     '- "factorsUsed": lista de catalogId usados na explicação;',
     '- "perAsset": array de { "label", "impactSummary" } alinhado às linhas da carteira quando possível;',
     '- "disclaimer": aviso de que é ilustrativo, não aconselhamento de investimento;',
     '- "riskNotes" (opcional): bullets com lacunas de dados ou limitações.',
     '- "evidence" (obrigatório): lista com 3-8 itens { "title","detail","relatedFactorId"?(catalogId),"relatedAssetLabel"?,"confidence"?(0..1) } explicando por que o cenário foi gerado.',
+    "",
+    "Regras de qualidade obrigatórias:",
+    "- Usa a carteira do utilizador como base central da resposta; evita resposta genérica.",
+    "- Estrutura a explicação em ordem: causas do cenário -> mecanismos de transmissão -> consequências na carteira.",
+    "- Se a pergunta for extrema/absurda (ex.: fim do mundo), reconhece a limitação do cenário e responde com lucidez humana antes da análise financeira.",
+    "- Se previres quedas fortes (ex.: -50%), explicita no mínimo 2 causas e 1 condição de invalidação.",
+    "- Não inventes dados numéricos fora do resultado quantitativo; quando faltar dado, diz explicitamente.",
+    "- Evita repetição: não repitas a mesma ideia com frases diferentes; cada bloco deve adicionar informação nova.",
+    "- Evita repetir vários fatores equivalentes sem distinção causal clara.",
+    "- Para cenários extremos, define visualScene forte (ex.: apocalypse/collapse). Para cenários normais, usa visualScene default/calm.",
     "",
     "Baseia-te no resultado quantitativo (JSON) e não contradigas os sinais (+/-) das projeções por linha.",
     "",

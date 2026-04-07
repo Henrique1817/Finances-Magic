@@ -115,7 +115,12 @@ model Asset {
   updatedAt   DateTime  @updatedAt
 
   priceHistory AssetPriceHistory[]
+  priceSnapshots AssetPriceSnapshot[]
   walletAssets WalletAsset[]
+  referencedUsage ReferencedAssetUsage?
+
+  /// Última vez que o worker de cotações “quentes” (carteiras) atualizou este ativo.
+  lastPriceSnapshotAt DateTime?
 
   @@map("assets")
 }
@@ -141,6 +146,40 @@ model AssetPriceHistory {
   @@unique([assetId, date])
   @@index([assetId, date(sort: Desc)])
   @@map("asset_price_history")
+}
+
+/// Cotação intradiária agregada (ex.: barra 30m) para ativos em carteiras ativas — não substitui o histórico diário.
+model AssetPriceSnapshot {
+  id          String   @id @default(cuid())
+  assetId     String
+  /// Início UTC do bucket (ex.: arredondado a 30 min) para idempotência.
+  bucketStart DateTime
+  close       Decimal  @db.Decimal(20, 8)
+  open        Decimal? @db.Decimal(20, 8)
+  high        Decimal? @db.Decimal(20, 8)
+  low         Decimal? @db.Decimal(20, 8)
+  volume      Decimal? @db.Decimal(24, 4)
+  source      String   @default("yahoo_finance_30m")
+  createdAt   DateTime @default(now())
+
+  asset Asset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@unique([assetId, bucketStart])
+  @@index([assetId, bucketStart(sort: Desc)])
+  @@map("asset_price_snapshots")
+}
+
+/// Ativos atualmente ligados a pelo menos uma posição de carteira (`wallet_assets.asset_id`).
+/// Sincronizado pelo worker de cotações referenciadas; ativos sem linhas não aparecem.
+model ReferencedAssetUsage {
+  assetId        String   @id
+  referenceCount Int
+  firstSeenAt    DateTime @default(now())
+  lastSyncedAt   DateTime @updatedAt
+
+  asset Asset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@map("referenced_asset_usage")
 }
 
 /// Observações macroeconômicas (FRED e similares): uma linha por série + data

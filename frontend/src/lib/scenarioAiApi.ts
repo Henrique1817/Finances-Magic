@@ -3,6 +3,23 @@ import { api, messageFromApiError } from "@/lib/apiClient";
 
 export type AiScenarioNarrative = {
   summary: string;
+  visualScene?: {
+    id?: "default" | "apocalypse" | "oil-collapse" | "geopolitical-shock";
+    intensity?: number;
+    palette?: "default" | "danger" | "amber" | "cold";
+    motion?: "calm" | "pulse" | "shake" | "collapse";
+    durationMs?: number;
+    rationale?: string;
+  };
+  analysisBlocks?: Array<{
+    title: string;
+    content: string;
+  }>;
+  causalChain?: Array<{
+    cause: string;
+    transmission: string;
+    effect: string;
+  }>;
   factorsUsed: string[];
   perAsset: { label: string; impactSummary: string }[];
   disclaimer: string;

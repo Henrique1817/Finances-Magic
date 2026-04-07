@@ -39,13 +39,22 @@ function buildRows(quant: AiScenarioQuant): Row[] {
 
 const BAR_BASE = "#334155";
 const BAR_PROJ = "#22d3ee";
-const BAR_NEG = "#f43f5e";
+const BAR_NEG = "#fb7185";
+const GRID_COLOR = "rgba(148, 163, 184, 0.28)";
+const AXIS_TEXT = "#e2e8f0";
+const AXIS_TEXT_SOFT = "#cbd5e1";
+
+function shortLabel(label: string): string {
+  if (label.length <= 16) return label;
+  return `${label.slice(0, 14)}...`;
+}
 
 type Props = {
   quant: AiScenarioQuant;
+  visualClassName?: string;
 };
 
-export function ScenarioImpactCharts({ quant }: Props) {
+export function ScenarioImpactCharts({ quant, visualClassName }: Props) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const rows = buildRows(quant);
 
@@ -73,7 +82,8 @@ export function ScenarioImpactCharts({ quant }: Props) {
   return (
     <div
       ref={wrapRef}
-      className="space-y-4 rounded-2xl border border-white/10 bg-slate-950/50 p-3 backdrop-blur-md sm:space-y-6 sm:p-4 md:p-6"
+      data-visual-chart
+      className={`space-y-4 rounded-2xl border border-white/10 bg-slate-950/50 p-3 backdrop-blur-md sm:space-y-6 sm:p-4 md:p-6 ${visualClassName ?? ""}`}
     >
       <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
         <div className="min-w-0">
@@ -106,27 +116,29 @@ export function ScenarioImpactCharts({ quant }: Props) {
             margin={{ top: 8, right: 8, left: 0, bottom: 4 }}
             barGap={4}
           >
-            <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.75} />
             <XAxis
               dataKey="name"
-              tick={{ fill: "#e2e8f0", fontSize: 13 }}
+              tick={{ fill: AXIS_TEXT, fontSize: 12 }}
+              tickFormatter={shortLabel}
               interval={0}
               angle={-18}
               textAnchor="end"
               height={72}
             />
             <YAxis
-              tick={{ fill: "#cbd5e1", fontSize: 12 }}
+              tick={{ fill: AXIS_TEXT_SOFT, fontSize: 12 }}
               tickFormatter={(v) => formatBRL(Number(v))}
               width={72}
             />
             <Tooltip
               contentStyle={{
-                background: "#0f172a",
-                border: "1px solid rgba(148,163,184,0.25)",
+                background: "rgba(15, 23, 42, 0.94)",
+                border: "1px solid rgba(148,163,184,0.4)",
                 borderRadius: 12,
+                boxShadow: "0 12px 28px rgba(2, 6, 23, 0.55)",
               }}
-              labelStyle={{ color: "#e2e8f0" }}
+              itemStyle={{ color: "#e2e8f0" }}
+              labelStyle={{ color: "#f8fafc", fontWeight: 600 }}
               formatter={(value: number, name: string) => [
                 formatBRL(value),
                 name === "baseline" ? "Baseline" : "Projetado",
@@ -138,8 +150,9 @@ export function ScenarioImpactCharts({ quant }: Props) {
                 value === "baseline" ? "Valor investido (baseline)" : "Projetado"
               }
             />
-            <Bar dataKey="baseline" fill={BAR_BASE} radius={[6, 6, 0, 0]} maxBarSize={36} />
-            <Bar dataKey="projetado" radius={[6, 6, 0, 0]} maxBarSize={36}>
+            <CartesianGrid strokeDasharray="3 3" stroke={GRID_COLOR} opacity={0.85} />
+            <Bar dataKey="baseline" fill={BAR_BASE} fillOpacity={0.95} radius={[6, 6, 0, 0]} maxBarSize={34} />
+            <Bar dataKey="projetado" radius={[6, 6, 0, 0]} maxBarSize={34}>
               {chartData.map((entry, index) => (
                 <Cell
                   key={`cell-${index}`}
