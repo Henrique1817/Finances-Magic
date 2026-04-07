@@ -25,8 +25,8 @@ export function HomeOverviewPanel() {
   const total = useWalletStore((s) => s.getTotalValue());
 
   const listReady = walletReady && !walletLoading;
-  const cardRefs = useRef<Array<HTMLDivElement | null>>([]);
-  const containerRef = useRef<HTMLDivElement | null>(null);
+  const cardRefs = useRef<Array<HTMLElement | null>>([]);
+  const containerRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     if (!listReady) return;
@@ -65,7 +65,7 @@ export function HomeOverviewPanel() {
     return "from-cyan-300/10 to-cyan-500/5";
   }
 
-  function onCardMove(index: number, event: MouseEvent<HTMLDivElement>) {
+  function onCardMove(index: number, event: MouseEvent<HTMLElement>) {
     const card = cardRefs.current[index];
     if (!card) return;
     const rect = card.getBoundingClientRect();
