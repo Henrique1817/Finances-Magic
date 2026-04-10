@@ -25,6 +25,7 @@ type ProviderRuntimeState = {
 };
 
 const states = new Map<ProviderName, ProviderRuntimeState>();
+type CounterRow = { requests: number };
 
 function utcMinuteStart(ts = Date.now()): number {
   return Math.floor(ts / 60_000) * 60_000;
@@ -93,13 +94,46 @@ export async function consumeProviderBudget(provider: ProviderName): Promise<boo
   const check = canUseProvider(provider);
   if (!check.ok) return false;
   const s = getState(provider);
+  const cfg = INGESTION_PROVIDER_BUDGETS[provider];
+  const minuteStartDate = new Date(s.counters.minuteStart);
+  const dayStartDate = new Date(s.counters.dayStart);
+
+  try {
+    // Hard guard persistente: evita estouro de quota em restart/escala horizontal.
+    const [minuteRows, dayRows] = await Promise.all([
+      prisma.$queryRaw<CounterRow[]>`
+        SELECT "requests"
+        FROM "api_quota_counters"
+        WHERE "provider" = ${provider}
+          AND "window" = 'minute'
+          AND "windowStart" = ${minuteStartDate}
+        LIMIT 1
+      `,
+      prisma.$queryRaw<CounterRow[]>`
+        SELECT "requests"
+        FROM "api_quota_counters"
+        WHERE "provider" = ${provider}
+          AND "window" = 'day'
+          AND "windowStart" = ${dayStartDate}
+        LIMIT 1
+      `,
+    ]);
+    const persistedMinute = minuteRows[0]?.requests ?? 0;
+    const persistedDay = dayRows[0]?.requests ?? 0;
+    if (persistedMinute >= cfg.requestsPerMinute || persistedDay >= cfg.requestsPerDay) {
+      return false;
+    }
+  } catch (err) {
+    log.warn({ err, provider }, "Falha ao ler contadores persistidos de quota");
+  }
+
   s.counters.minuteCount += 1;
   s.counters.dayCount += 1;
 
   try {
     const now = new Date();
-    const minuteStart = new Date(s.counters.minuteStart);
-    const dayStart = new Date(s.counters.dayStart);
+    const minuteStart = minuteStartDate;
+    const dayStart = dayStartDate;
     await prisma.$executeRaw`
       INSERT INTO "api_quota_counters" ("id", "provider", "window", "windowStart", "requests", "updatedAt", "createdAt")
       VALUES (gen_random_uuid()::text, ${provider}, 'minute', ${minuteStart}, 1, NOW(), NOW())

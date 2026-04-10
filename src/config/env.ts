@@ -58,6 +58,23 @@ export const env = {
   /** "false" desliga o agendamento (útil em testes). */
   ingestionCronEnabled: process.env.INGESTION_CRON_ENABLED !== "false",
   /**
+   * Agente diário de descoberta de parâmetros: propõe novos ativos a partir de manchetes.
+   * Usa deduplicação por símbolo e respeita limite por execução.
+   */
+  dailyParamAgentEnabled: process.env.DAILY_PARAM_AGENT_ENABLED !== "false",
+  /** Se true, usa Gemini para sugerir novos ativos a partir de notícias. */
+  dailyParamAgentUseGemini: process.env.DAILY_PARAM_AGENT_USE_GEMINI !== "false",
+  dailyParamAgentMaxNewAssetsPerRun: parsePositiveInt(
+    process.env.DAILY_PARAM_AGENT_MAX_NEW_ASSETS_PER_RUN,
+    12,
+  ),
+  dailyParamAgentNewsLookback: parsePositiveInt(process.env.DAILY_PARAM_AGENT_NEWS_LOOKBACK, 200),
+  /** Máximo de chamadas Gemini por dia para descoberta automática de parâmetros. */
+  dailyParamAgentGeminiDailyCap: parsePositiveInt(process.env.DAILY_PARAM_AGENT_GEMINI_DAILY_CAP, 3),
+  /** Modelo Gemini dedicado ao agente diário (opcional). */
+  dailyParamAgentGeminiModel:
+    process.env.DAILY_PARAM_AGENT_GEMINI_MODEL?.trim() || process.env.GEMINI_MODEL?.trim() || "gemini-2.5-flash-lite",
+  /**
    * Cotações intradiárias (Yahoo 30m) só para ativos ligados a carteiras (`wallet_assets.asset_id`).
    * "false" desliga o cron dedicado (ingestão diária global continua igual).
    */

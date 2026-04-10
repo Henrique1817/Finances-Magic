@@ -10,8 +10,8 @@ import { runReferencedAssetPriceIngestion } from "./services/ingestion/reference
 
 const log = logger.child({ module: "workers" });
 
-/** Segunda a sexta, 18:30 no fuso `CRON_TZ`. */
-const MARKET_DATA_CRON = "30 18 * * 1-5";
+/** Diariamente, 18:30 no fuso `CRON_TZ`. */
+const MARKET_DATA_CRON = "30 18 * * *";
 
 /** Diariamente às 08:00 no fuso `CRON_TZ`. */
 const NEWS_ANALYSIS_CRON = "0 8 * * *";

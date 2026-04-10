@@ -453,11 +453,12 @@ Workers registrados em `src/workers.ts` (chamado a partir de `src/index.ts`):
 
 | Worker | Agendamento (cron) | Fuso | Responsabilidade |
 |--------|---------------------|------|-------------------|
-| **marketData** | `30 18 * * 1-5` (seg–sex 18:30) | `CRON_TZ` | Alpha Vantage (símbolos em `MARKET_WORKER_ASSETS`, ex. **AAPL**, **MSFT**, **SPY**, **COPX**, **XLE**) → `AssetPriceHistory`; FRED (séries em `MARKET_WORKER_FRED_SERIES`, ex. **DFF**, **DCOILWTICO**, **VIXCLS**, **DEXUSEU**, **CPIAUCSL**) → `MacroIndicator`. HTTP **429** apenas gera log. |
+| **marketData** | `30 18 * * *` (todo dia 18:30) | `CRON_TZ` | Alpha Vantage (símbolos em `MARKET_WORKER_ASSETS`, ex. **AAPL**, **MSFT**, **SPY**, **COPX**, **XLE**) → `AssetPriceHistory`; FRED (séries em `MARKET_WORKER_FRED_SERIES`, ex. **DFF**, **DCOILWTICO**, **VIXCLS**, **DEXUSEU**, **CPIAUCSL**) → `MacroIndicator`. HTTP **429** apenas gera log. |
 | **newsAnalysis** | `0 8 * * *` (todo dia 08:00) | `CRON_TZ` | NewsAPI (`everything`) com várias queries em `NEWS_ANALYSIS_QUERIES`; heurística `analyzeSentimentAndRisk` → nota 1–10 em `MacroIndicator` (`CODECHROMA_GEO_RISK_NLP`) + `NewsRecord` (dedupe por `url`). |
 | **climate** | `15 7 * * *` (todo dia 07:15) | `CRON_TZ` | Open-Meteo Archive → `ClimateObservation` para cada chave em `CLIMATE_REGION_KEYS` (coordenadas em `CLIMATE_REGION_PRESETS`). Sem chaves de região, o worker não faz pedidos. |
 
 - **Mock Alpha Vantage:** `ALPHA_VANTAGE_USE_MOCK=true` (ou ausência de chave, com aviso no log) usa fechamentos simulados sem rede.
+- **Agente diário de parâmetros (Gemini):** opcional e com cap diário (`DAILY_PARAM_AGENT_GEMINI_DAILY_CAP`) para proteger free tier.
 - **Política:** o frontend **não** chama APIs externas; apenas este backend ingere e persiste.
 
 Desligar os crons: `INGESTION_CRON_ENABLED=false`.

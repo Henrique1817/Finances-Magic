@@ -1,5 +1,6 @@
 import { Prisma, type AssetType } from "@prisma/client";
 import axios, { isAxiosError } from "axios";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { resolve } from "node:path";
@@ -9,6 +10,7 @@ import {
   MARKET_WORKER_ASSETS,
   MARKET_WORKER_FRED_SERIES,
   MARKET_WORKER_WORLD_BANK_INDICATORS,
+  type MonitoredAsset,
 } from "../../config/ingestion";
 import { env } from "../../config/env";
 import { runWithIngestionRunLog } from "../../lib/ingestionRun";
@@ -33,6 +35,227 @@ const YAHOO_CHART_URL = "https://query1.finance.yahoo.com/v8/finance/chart";
 const STOOQ_DAILY_CSV_URL = "https://stooq.com/q/d/l/";
 const YFINANCE_SCRIPT_PATH = resolve(process.cwd(), "src", "scripts", "fetch_yfinance.py");
 const execFileAsync = promisify(execFile);
+type CandidateAsset = {
+  symbol: string;
+  name: string;
+  category: string;
+  type: AssetType;
+};
+type CountRow = { requests: number };
+type GeminiCandidateAsset = CandidateAsset & {
+  confidence?: number;
+  reason?: string;
+};
+const NEWS_TICKER_STOPWORDS = new Set([
+  "THE",
+  "AND",
+  "FOR",
+  "WITH",
+  "FROM",
+  "THIS",
+  "THAT",
+  "WILL",
+  "SAYS",
+  "SAID",
+  "NEAR",
+  "OVER",
+  "UNDER",
+  "ABOVE",
+  "AFTER",
+  "BEFORE",
+  "MIDDLE",
+  "CHINA",
+  "WAR",
+  "OIL",
+  "FED",
+  "ECB",
+  "BIDEN",
+  "TRUMP",
+  "USA",
+  "UK",
+  "UAE",
+  "NATO",
+  "EU",
+  "GDP",
+  "CPI",
+  "ETF",
+]);
+const ALLOWED_ASSET_TYPES = new Set<AssetType>(["STOCK", "INDEX", "COMMODITY", "ENERGY"]);
+
+function dedupeMonitoredAssets(items: MonitoredAsset[]): MonitoredAsset[] {
+  const bySymbol = new Map<string, MonitoredAsset>();
+  for (const item of items) {
+    const symbol = item.symbol.trim().toUpperCase();
+    if (!symbol) continue;
+    if (bySymbol.has(symbol)) continue;
+    bySymbol.set(symbol, { ...item, symbol });
+  }
+  return [...bySymbol.values()];
+}
+
+function normalizeCandidateAsset(raw: GeminiCandidateAsset): CandidateAsset | null {
+  const symbol = String(raw.symbol ?? "")
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, "");
+  if (!symbol || !/^[A-Z0-9]{1,6}(?:\.[A-Z]{1,3})?$/.test(symbol)) return null;
+  if (NEWS_TICKER_STOPWORDS.has(symbol)) return null;
+
+  const name = String(raw.name ?? "").trim();
+  const category = String(raw.category ?? "").trim();
+  const typeRaw = String(raw.type ?? "")
+    .trim()
+    .toUpperCase() as AssetType;
+  const type: AssetType = ALLOWED_ASSET_TYPES.has(typeRaw) ? typeRaw : "STOCK";
+  return {
+    symbol,
+    name: name || `Ativo descoberto por agente IA (${symbol})`,
+    category: category || "AutoDiscoveryAI",
+    type,
+  };
+}
+
+function safeParseJsonObject(rawText: string): unknown {
+  const trimmed = rawText.trim();
+  try {
+    return JSON.parse(trimmed) as unknown;
+  } catch {
+    const start = trimmed.indexOf("{");
+    const end = trimmed.lastIndexOf("}");
+    if (start >= 0 && end > start) {
+      return JSON.parse(trimmed.slice(start, end + 1)) as unknown;
+    }
+    throw new Error("Resposta da IA não está em JSON válido.");
+  }
+}
+
+function utcDayStartDate(): Date {
+  const d = new Date();
+  d.setUTCHours(0, 0, 0, 0);
+  return d;
+}
+
+async function reserveDailyParamAgentGeminiCall(modelName: string): Promise<boolean> {
+  const provider = `gemini-daily-param-agent:${modelName}`;
+  const dayStart = utcDayStartDate();
+  const cap = env.dailyParamAgentGeminiDailyCap;
+  const rows = await prisma.$queryRaw<CountRow[]>`
+    SELECT "requests"
+    FROM "api_quota_counters"
+    WHERE "provider" = ${provider}
+      AND "window" = 'day'
+      AND "windowStart" = ${dayStart}
+    LIMIT 1
+  `;
+  const used = rows[0]?.requests ?? 0;
+  if (used >= cap) return false;
+  await prisma.$executeRaw`
+    INSERT INTO "api_quota_counters" ("id","provider","window","windowStart","requests","updatedAt","createdAt")
+    VALUES (gen_random_uuid()::text, ${provider}, 'day', ${dayStart}, 1, NOW(), NOW())
+    ON CONFLICT ("provider","window","windowStart")
+    DO UPDATE SET "requests" = "api_quota_counters"."requests" + 1, "updatedAt" = NOW()
+  `;
+  return true;
+}
+
+async function discoverAssetsFromNewsWithGemini(args: {
+  existingSymbols: Set<string>;
+  maxNew: number;
+  lookback: number;
+}): Promise<MonitoredAsset[]> {
+  if (!env.geminiApiKey || !env.dailyParamAgentUseGemini) return [];
+  const reserved = await reserveDailyParamAgentGeminiCall(env.dailyParamAgentGeminiModel);
+  if (!reserved) {
+    log.info(
+      { cap: env.dailyParamAgentGeminiDailyCap, model: env.dailyParamAgentGeminiModel },
+      "Cap diário do agente Gemini atingido; descoberta IA ignorada",
+    );
+    return [];
+  }
+  const rows = await prisma.newsRecord.findMany({
+    orderBy: { publishedAt: "desc" },
+    take: Math.max(20, args.lookback),
+    select: { title: true },
+  });
+  const titles = rows
+    .map((r) => r.title?.trim() ?? "")
+    .filter(Boolean)
+    .slice(0, args.lookback);
+  if (titles.length === 0) return [];
+
+  const prompt = [
+    "Você é um agente de descoberta de ativos financeiros.",
+    "Objetivo: sugerir NOVOS tickers para monitorar com base em manchetes recentes.",
+    "Responda SOMENTE JSON no formato:",
+    '{"candidates":[{"symbol":"AAPL","name":"Apple Inc.","category":"Tech","type":"STOCK","confidence":0.91,"reason":"..." }]}',
+    "Regras:",
+    "- Não repetir símbolos já existentes.",
+    `- Símbolos existentes (não sugerir): ${[...args.existingSymbols].sort().join(", ")}`,
+    `- Retorne no máximo ${args.maxNew} candidatos.`,
+    "- Use símbolos reais e negociáveis quando possível.",
+    '- "type" deve ser um de: STOCK, INDEX, COMMODITY, ENERGY.',
+    "- Evite tokens genéricos (WAR, FED, GDP etc.).",
+    "",
+    "MANCHETES RECENTES:",
+    ...titles.map((t) => `- ${t}`),
+  ].join("\n");
+
+  const gen = new GoogleGenerativeAI(env.geminiApiKey);
+  const model = gen.getGenerativeModel({
+    model: env.dailyParamAgentGeminiModel,
+    generationConfig: { responseMimeType: "application/json" },
+  });
+  const result = await model.generateContent(prompt);
+  const raw = result.response.text();
+  const parsed = safeParseJsonObject(raw) as { candidates?: GeminiCandidateAsset[] };
+  const candidates = Array.isArray(parsed?.candidates) ? parsed.candidates : [];
+
+  const out: MonitoredAsset[] = [];
+  const seen = new Set<string>(args.existingSymbols);
+  for (const candidate of candidates) {
+    const normalized = normalizeCandidateAsset(candidate);
+    if (!normalized) continue;
+    if (seen.has(normalized.symbol)) continue;
+    seen.add(normalized.symbol);
+    out.push(normalized);
+    if (out.length >= args.maxNew) break;
+  }
+  return out;
+}
+
+async function discoverAssetsFromRecentNews(args: {
+  existingSymbols: Set<string>;
+  maxNew: number;
+  lookback: number;
+}): Promise<MonitoredAsset[]> {
+  const rows = await prisma.newsRecord.findMany({
+    orderBy: { publishedAt: "desc" },
+    take: Math.max(20, args.lookback),
+    select: { title: true },
+  });
+  const out: MonitoredAsset[] = [];
+  const seen = new Set<string>(args.existingSymbols);
+  const pattern = /\b[A-Z]{1,5}(?:\.[A-Z]{1,3})?\b/g;
+
+  for (const row of rows) {
+    const title = row.title ?? "";
+    const matches = title.toUpperCase().match(pattern) ?? [];
+    for (const raw of matches) {
+      const symbol = raw.trim().toUpperCase();
+      if (!symbol || NEWS_TICKER_STOPWORDS.has(symbol)) continue;
+      if (seen.has(symbol)) continue;
+      seen.add(symbol);
+      out.push({
+        symbol,
+        name: `Ativo descoberto por agente diário (${symbol})`,
+        category: "AutoDiscovery",
+        type: "STOCK",
+      });
+      if (out.length >= args.maxNew) return out;
+    }
+  }
+  return out;
+}
 
 type TimeSeriesDaily = Record<string, Record<string, string>>;
 type PriceRow = { date: string; close: string };
@@ -458,9 +681,43 @@ export async function runMarketDataIngestion(): Promise<void> {
     let rowsUpserted = 0;
 
     log.info("Início marketDataWorker");
+    const configuredAssets = dedupeMonitoredAssets(MARKET_WORKER_ASSETS);
+    const configuredSymbols = new Set(configuredAssets.map((x) => x.symbol));
+    let discoveredAssets: MonitoredAsset[] = [];
+    if (env.dailyParamAgentEnabled && "newsRecord" in prisma) {
+      try {
+        discoveredAssets = await discoverAssetsFromNewsWithGemini({
+          existingSymbols: configuredSymbols,
+          maxNew: env.dailyParamAgentMaxNewAssetsPerRun,
+          lookback: env.dailyParamAgentNewsLookback,
+        });
+      } catch (err) {
+        log.warn(
+          { err },
+          "Agente Gemini de descoberta falhou; aplicando fallback heurístico",
+        );
+      }
+      if (discoveredAssets.length === 0) {
+        discoveredAssets = await discoverAssetsFromRecentNews({
+          existingSymbols: configuredSymbols,
+          maxNew: env.dailyParamAgentMaxNewAssetsPerRun,
+          lookback: env.dailyParamAgentNewsLookback,
+        });
+      }
+    }
+    const assetsToIngest = dedupeMonitoredAssets([...configuredAssets, ...discoveredAssets]);
 
-    for (let i = 0; i < MARKET_WORKER_ASSETS.length; i++) {
-      const cfg = MARKET_WORKER_ASSETS[i]!;
+    log.info(
+      {
+        configured: configuredAssets.length,
+        discovered: discoveredAssets.length,
+        total: assetsToIngest.length,
+      },
+      "Lista final de ativos para ingestão (com deduplicação)",
+    );
+
+    for (let i = 0; i < assetsToIngest.length; i++) {
+      const cfg = assetsToIngest[i]!;
       try {
         const providers = [
           { name: "brapi" as const, fetch: () => fetchBrapiDailySeries(cfg.symbol) },
@@ -518,7 +775,7 @@ export async function runMarketDataIngestion(): Promise<void> {
           reason: err instanceof Error ? err.message : "unknown_error",
         });
       }
-      if (i < MARKET_WORKER_ASSETS.length - 1) {
+      if (i < assetsToIngest.length - 1) {
         const gap = env.brapiToken ? BRAPI_REQUEST_GAP_MS : ALPHA_VANTAGE_REQUEST_GAP_MS;
         await sleep(gap);
       }
