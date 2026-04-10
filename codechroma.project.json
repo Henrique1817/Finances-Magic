@@ -1,0 +1,110 @@
+{
+  "slug": "becco7burguer",
+  "title": "Becco7Burguer",
+  "summary": "Aplicacao web para hamburgueria com cardapio digital, carrinho e fechamento de pedidos online, incluindo envio para WhatsApp, persistencia opcional no Supabase e notificacao por email.",
+  "highlights": [
+    "Frontend em Next.js 15 + React 19 + Tailwind, com foco em experiencia mobile e conversao para pedido",
+    "Cardapio completo por categorias (hamburgueres, becco dogs, adicionais, porcoes, sobremesas e bebidas)",
+    "Fluxo de pedido com validacao de dados, escolha entre retirada ou entrega e mensagem pronta para WhatsApp",
+    "API de pedidos com Zod, gravacao em Supabase e envio de email via Resend (quando variaveis estao configuradas)"
+  ],
+  "links": {
+    "demo": "https://www.instagram.com/becco7burguer/",
+    "docs": "https://www.instagram.com/becco7burguer/",
+    "repo": "https://github.com/Henrique1817/Becco7Burguer"
+  },
+  "media": [
+    {
+      "type": "image",
+      "src": "https://ixb1sa3dnw6eaaln.public.blob.vercel-storage.com/projects/becco7burguer/1774664108568-Logo_Becco7.png",
+      "alt": "Becco7Burguer — logotipo",
+      "width": 800,
+      "height": 800
+    },
+    {
+      "type": "image",
+      "src": "https://ixb1sa3dnw6eaaln.public.blob.vercel-storage.com/projects/becco7burguer/1774664109909-1.png",
+      "alt": "Becco7Burguer — cardápio (imagem 1)",
+      "width": 683,
+      "height": 850
+    },
+    {
+      "type": "image",
+      "src": "https://ixb1sa3dnw6eaaln.public.blob.vercel-storage.com/projects/becco7burguer/1774664110709-2.png",
+      "alt": "Becco7Burguer — hamburguer artesanal (imagem 2)",
+      "width": 339,
+      "height": 402
+    },
+    {
+      "type": "image",
+      "src": "https://ixb1sa3dnw6eaaln.public.blob.vercel-storage.com/projects/becco7burguer/1774664111458-3.png",
+      "alt": "Becco7Burguer — lanche (imagem 3)",
+      "width": 338,
+      "height": 433
+    },
+    {
+      "type": "image",
+      "src": "https://ixb1sa3dnw6eaaln.public.blob.vercel-storage.com/projects/becco7burguer/1774664112219-4.png",
+      "alt": "Becco7Burguer — combo (imagem 4)",
+      "width": 340,
+      "height": 440
+    },
+    {
+      "type": "image",
+      "src": "https://ixb1sa3dnw6eaaln.public.blob.vercel-storage.com/projects/becco7burguer/1774664113071-5.png",
+      "alt": "Becco7Burguer — burger destaque (imagem 5)",
+      "width": 336,
+      "height": 445
+    },
+    {
+      "type": "image",
+      "src": "https://ixb1sa3dnw6eaaln.public.blob.vercel-storage.com/projects/becco7burguer/1774664113835-6.png",
+      "alt": "Becco7Burguer — onion burger (imagem 6)",
+      "width": 335,
+      "height": 447
+    },
+    {
+      "type": "image",
+      "src": "https://ixb1sa3dnw6eaaln.public.blob.vercel-storage.com/projects/becco7burguer/1774664114566-7.png",
+      "alt": "Becco7Burguer — duplo cheddar (imagem 7)",
+      "width": 336,
+      "height": 450
+    },
+    {
+      "type": "image",
+      "src": "https://ixb1sa3dnw6eaaln.public.blob.vercel-storage.com/projects/becco7burguer/1774664115501-8.png",
+      "alt": "Becco7Burguer — lanche premium (imagem 8)",
+      "width": 337,
+      "height": 450
+    },
+    {
+      "type": "image",
+      "src": "https://ixb1sa3dnw6eaaln.public.blob.vercel-storage.com/projects/becco7burguer/1774664116855-9.png",
+      "alt": "Becco7Burguer — porção nuggets (imagem 9)",
+      "width": 340,
+      "height": 414
+    },
+    {
+      "type": "image",
+      "src": "https://ixb1sa3dnw6eaaln.public.blob.vercel-storage.com/projects/becco7burguer/1774664117804-10.png",
+      "alt": "Becco7Burguer — X Becco / Bequinho (imagem 10)",
+      "width": 336,
+      "height": 448
+    },
+    {
+      "type": "image",
+      "src": "https://ixb1sa3dnw6eaaln.public.blob.vercel-storage.com/projects/becco7burguer/1774664118602-11.png",
+      "alt": "Becco7Burguer — fritas especiais (imagem 11)",
+      "width": 331,
+      "height": 451
+    },
+    {
+      "type": "video",
+      "src": "https://ixb1sa3dnw6eaaln.public.blob.vercel-storage.com/projects/becco7burguer/1774664206929-V%C3%ADdeo_Chamativo_Para_Hamburgueria.mp4",
+      "poster": "https://ixb1sa3dnw6eaaln.public.blob.vercel-storage.com/projects/becco7burguer/1774664113071-5.png",
+      "alt": "Becco7Burguer — vídeo de destaque da home",
+      "width": 1920,
+      "height": 1080
+    }
+  ]
+}

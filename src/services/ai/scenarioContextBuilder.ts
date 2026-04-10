@@ -87,24 +87,29 @@ async function loadRecentMacroLastDates(): Promise<MacroSeriesLastDate[]> {
  * Contexto para cenários: carteira, últimas datas macro por série, manchetes recentes.
  */
 export async function buildScenarioContext(userId: string): Promise<ScenarioContext> {
+  // carrega as linhas da carteira com os ativos catalogados
   const [walletLines, macroLastBySeries, newsRows, climateRows] = await Promise.all([
     getWalletLinesWithAssets(userId),
     loadRecentMacroLastDates(),
+    // carrega as manchetes recentes
     prisma.newsRecord.findMany({
       orderBy: { publishedAt: "desc" },
       take: 10,
       select: { title: true },
     }),
+    // carrega as observações climáticas recentes
     prisma.climateObservation.findMany({
       orderBy: [{ regionKey: "asc" }, { date: "desc" }],
       take: 200,
       select: { regionKey: true, date: true, tempMeanC: true, precipMm: true },
     }),
   ]);
+  // agrupa as observações climáticas por região
   const climateByRegion = new Map<
     string,
     { regionKey: string; lastDate: string; tempMeanC: string | null; precipMm: string | null }
   >();
+  // agrupa as observações climáticas por região
   for (const row of climateRows) {
     if (climateByRegion.has(row.regionKey)) continue;
     climateByRegion.set(row.regionKey, {
@@ -115,6 +120,7 @@ export async function buildScenarioContext(userId: string): Promise<ScenarioCont
     });
   }
 
+  // retorna o contexto
   return {
     walletLines,
     macroLastBySeries,
@@ -129,7 +135,7 @@ export function formatScenarioContextForPrompt(ctx: ScenarioContext): string {
   parts.push("Carteira do usuário:");
   if (ctx.walletLines.length === 0) {
     parts.push("  (vazia)");
-  } else {
+  } else { 
     for (const w of ctx.walletLines) {
       const sym = w.assetSymbol ? ` [ativo: ${w.assetSymbol}${w.assetName ? ` — ${w.assetName}` : ""}]` : " [sem vínculo a ativo catalogado]";
       parts.push(
@@ -137,7 +143,7 @@ export function formatScenarioContextForPrompt(ctx: ScenarioContext): string {
       );
     }
   }
-
+  // adiciona as últimas observações conhecidas por série macro
   parts.push("", "Última observação conhecida por série macro (amostra):");
   for (const m of ctx.macroLastBySeries.slice(0, 25)) {
     parts.push(`  • ${m.seriesId} @ ${m.lastDate} = ${m.lastValue}`);
@@ -145,12 +151,12 @@ export function formatScenarioContextForPrompt(ctx: ScenarioContext): string {
   if (ctx.macroLastBySeries.length > 25) {
     parts.push(`  … (+${ctx.macroLastBySeries.length - 25} séries)`);
   }
-
+  // adiciona as manchetes recentes
   parts.push("", "Manchetes recentes (até 10):");
   for (const t of ctx.recentNewsTitles) {
     parts.push(`  • ${t}`);
   }
-
+  // adiciona as últimas observações climáticas por região
   parts.push("", "Última observação climática por região (amostra):");
   for (const c of ctx.climateLastByRegion.slice(0, 25)) {
     parts.push(
@@ -160,6 +166,6 @@ export function formatScenarioContextForPrompt(ctx: ScenarioContext): string {
   if (ctx.climateLastByRegion.length > 25) {
     parts.push(`  … (+${ctx.climateLastByRegion.length - 25} regiões)`);
   }
-
+  // retorna o contexto formatado
   return parts.join("\n");
 }

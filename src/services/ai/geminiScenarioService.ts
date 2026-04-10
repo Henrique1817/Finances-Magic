@@ -13,6 +13,8 @@ const parseFactorsSchema = z.object({
     }),
   ),
   userIntentSummary: z.string().optional(),
+  confidence: z.number().min(0).max(1).optional(),
+  timeHorizonDays: z.number().int().min(1).max(365).optional(),
 });
 
 export type ParsedFactorsPayload = z.infer<typeof parseFactorsSchema>;
@@ -400,10 +402,10 @@ export async function geminiBuildNarrative(args: {
     "Pensa de forma profunda, relacionando macroeconomia, geopolítica, cadeia de suprimentos e comportamento setorial.",
     "A resposta deve ser útil para decisão humana e explicar causalidade (por que o efeito acontece).",
     "Campos obrigatórios:",
-    '- "summary": texto curto do cenário;',
+    '- "summary": texto sobre o cenário;',
     '- "visualScene": objeto para interação visual da UI { "id","intensity","palette","motion","durationMs","rationale" };',
     '- "analysisBlocks": array com 4-7 blocos { "title","content" } cobrindo: mecanismo causal, curto prazo, médio/longo prazo, riscos e gatilhos;',
-    '- "causalChain": array com 3-6 itens { "cause","transmission","effect" } para explicar como o choque vira impacto financeiro;',
+    '- "causalChain": array com 3-6 itens { "cause","transmission","effect" } para explicar como o choque global virou impacto financeiro;',
     '- "factorsUsed": lista de catalogId usados na explicação;',
     '- "perAsset": array de { "label", "impactSummary" } alinhado às linhas da carteira quando possível;',
     '- "disclaimer": aviso de que é ilustrativo, não aconselhamento de investimento;',
@@ -412,9 +414,9 @@ export async function geminiBuildNarrative(args: {
     "",
     "Regras de qualidade obrigatórias:",
     "- Usa a carteira do utilizador como base central da resposta; evita resposta genérica.",
-    "- Estrutura a explicação em ordem: causas do cenário -> mecanismos de transmissão -> consequências na carteira.",
+    "- Estrutura a explicação em ordem: causas do cenário -> mecanismos de transmissão -> consequências na carteira -> evidências.",
     "- Se a pergunta for extrema/absurda (ex.: fim do mundo), reconhece a limitação do cenário e responde com lucidez humana antes da análise financeira.",
-    "- Se previres quedas fortes (ex.: -50%), explicita no mínimo 2 causas e 1 condição de invalidação.",
+    "- Se previres quedas fortes (ex.: -50%), explicita no mínimo 2 causas e 2 condições de invalidação.",
     "- Não inventes dados numéricos fora do resultado quantitativo; quando faltar dado, diz explicitamente.",
     "- Evita repetição: não repitas a mesma ideia com frases diferentes; cada bloco deve adicionar informação nova.",
     "- Evita repetir vários fatores equivalentes sem distinção causal clara.",
