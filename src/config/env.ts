@@ -31,6 +31,12 @@ export const env = {
   newsApiKey: optional("NEWS_API_KEY"),
   /** Google Gemini — cenários IA (opcional; sem chave o endpoint retorna erro claro). */
   geminiApiKey: optional("GEMINI_API_KEY"),
+  /**
+   * OpenAI — transcrição por voz (Whisper) para navegadores sem Web Speech API
+   * (ex.: Firefox, Safari/iOS). Opcional; sem chave o front usa só reconhecimento nativo.
+   */
+  openaiApiKey: optional("OPENAI_API_KEY"),
+  openaiWhisperModel: process.env.OPENAI_WHISPER_MODEL?.trim() || "whisper-1",
   geminiModel: process.env.GEMINI_MODEL?.trim() || "gemini-2.5-flash-lite",
   geminiModelFallbacks: parseCommaList(process.env.GEMINI_MODEL_FALLBACKS),
   /**

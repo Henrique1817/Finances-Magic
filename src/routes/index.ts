@@ -6,6 +6,7 @@ import { authRouter } from "./v1/auth.routes";
 import { dashboardRouter } from "./v1/dashboard.routes";
 import { scenariosRouter } from "./v1/scenarios.routes";
 import { simulationRouter } from "./v1/simulation.routes";
+import { speechRouter } from "./v1/speech.routes";
 import { walletRouter } from "./v1/wallet.routes";
 
 /**
@@ -20,4 +21,5 @@ apiV1Router.use("/dashboard", dashboardRouter);
 apiV1Router.use("/simulation", simulationRouter);
 apiV1Router.use("/wallet", walletRouter);
 apiV1Router.use("/ai", aiRouter);
+apiV1Router.use("/speech", speechRouter);
 apiV1Router.use("/scenarios", scenariosRouter);

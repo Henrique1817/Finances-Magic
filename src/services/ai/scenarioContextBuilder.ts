@@ -135,11 +135,17 @@ export function formatScenarioContextForPrompt(ctx: ScenarioContext): string {
   parts.push("Carteira do usuário:");
   if (ctx.walletLines.length === 0) {
     parts.push("  (vazia)");
-  } else { 
+  } else {
+    const semAtivo = ctx.walletLines.filter((w) => !w.assetId || !w.assetSymbol).length;
     for (const w of ctx.walletLines) {
       const sym = w.assetSymbol ? ` [ativo: ${w.assetSymbol}${w.assetName ? ` — ${w.assetName}` : ""}]` : " [sem vínculo a ativo catalogado]";
       parts.push(
         `  • ${w.nome} (${w.setor}) — investido: ${w.valorInvestido.toFixed(2)}${sym}`,
+      );
+    }
+    if (semAtivo > 0) {
+      parts.push(
+        `  Nota: ${semAtivo} linha(s) sem ativo catalogado — a projeção por beta de mercado fica limitada ou ausente nessas posições; o utilizador deve ser avisado.`,
       );
     }
   }

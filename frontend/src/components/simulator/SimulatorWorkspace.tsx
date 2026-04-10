@@ -17,12 +17,24 @@ import { hasWakePhrase } from "@/lib/voiceMake";
 import { useVoiceStore } from "@/store/useVoiceStore";
 import { ScenarioImpactCharts } from "@/components/simulator/ScenarioImpactCharts";
 import { Layout } from "@/components/simulator/Layout";
+import { pickAudioMimeType } from "@/lib/pickAudioMimeType";
+import { transcribeSpeechBlob } from "@/lib/speechTranscribeApi";
 
 const VISUAL_SCENE_EVENT = "codechroma:visual-scene";
 const VISUAL_BEAT_EVENT = "codechroma:visual-beat";
 const WAKE_COOLDOWN_MS = 2200;
 const COMMAND_TIMEOUT_MS = 18000;
 const COMMAND_SILENCE_MS = 2200;
+/** Áudio + envio ao Whisper em janelas de ~200 ms (alvo de latência perceptível). */
+const WHISPER_TIMESLICE_MS = 200;
+const WHISPER_FLUSH_MS = 200;
+const WAKE_RING_MAX_CHUNKS = 14;
+const WHISPER_MIN_WAKE_BYTES = 1200;
+const WHISPER_MIN_CMD_BYTES = 1400;
+
+const FORCE_WHISPER_ENGINE =
+  typeof process !== "undefined" &&
+  process.env.NEXT_PUBLIC_SPEECH_FORCE_WHISPER === "true";
 
 type SpeechRecognitionEventLike = Event & {
   resultIndex: number;
@@ -178,7 +190,10 @@ export function SimulatorWorkspace() {
   const [cinematicMode, setCinematicMode] = useState(true);
   const [reduceMotion, setReduceMotion] = useState(false);
   const [speechSupported, setSpeechSupported] = useState(true);
+  const [whisperStreamReady, setWhisperStreamReady] = useState(false);
   const [wakeRestartTick, setWakeRestartTick] = useState(0);
+
+  const useWhisperPath = FORCE_WHISPER_ENGINE || !speechSupported;
 
   const mainRef = useRef<HTMLDivElement>(null);
   const projectedRef = useRef<HTMLDivElement>(null);
@@ -193,6 +208,26 @@ export function SimulatorWorkspace() {
   const cooldownRef = useRef(0);
   const draftMessageRef = useRef("");
   const runScenarioFromVoiceRef = useRef<(text: string) => void>(() => undefined);
+  const isListeningRef = useRef(false);
+  const whisperStreamRef = useRef<MediaStream | null>(null);
+  const whisperGenRef = useRef(0);
+  const whisperAbortRef = useRef<AbortController | null>(null);
+  const whisperWakeActiveRef = useRef(false);
+  const whisperWakeRecorderRef = useRef<MediaRecorder | null>(null);
+  const whisperWakeIntervalRef = useRef<number | null>(null);
+  const whisperWakeRingRef = useRef<Blob[]>([]);
+  const whisperCommandRunningRef = useRef(false);
+  const whisperCommandRecorderRef = useRef<MediaRecorder | null>(null);
+  const whisperCommandIntervalRef = useRef<number | null>(null);
+  const whisperCommandTimeoutRef = useRef<number | null>(null);
+  const whisperCommandChunksRef = useRef<Blob[]>([]);
+  const whisperCommandMimeRef = useRef<string | undefined>(undefined);
+  const whisperCommandLastTextRef = useRef("");
+  const whisperCommandLastChangeRef = useRef(0);
+
+  useEffect(() => {
+    isListeningRef.current = isListening;
+  }, [isListening]);
 
   const playConfirmBeep = useCallback(() => {
     if (typeof window === "undefined") return;
@@ -242,7 +277,13 @@ export function SimulatorWorkspace() {
   }, [setIsWakeArmed]);
 
   const startWakeRecognition = useCallback(() => {
-    if (typeof window === "undefined" || !micPermissionGranted || wakeRecognitionRef.current) return;
+    if (
+      typeof window === "undefined" ||
+      !micPermissionGranted ||
+      useWhisperPath ||
+      wakeRecognitionRef.current
+    )
+      return;
     const speechWindow = window as WindowWithSpeech;
     const SR = speechWindow.SpeechRecognition ?? speechWindow.webkitSpeechRecognition;
     if (!SR) return;
@@ -293,6 +334,236 @@ export function SimulatorWorkspace() {
     setIsWakeArmed,
     setIsListening,
     stopWakeRecognition,
+    useWhisperPath,
+  ]);
+
+  const stopWhisperWake = useCallback(() => {
+    whisperGenRef.current += 1;
+    whisperAbortRef.current?.abort();
+    whisperAbortRef.current = null;
+    whisperWakeActiveRef.current = false;
+    if (whisperWakeIntervalRef.current !== null) {
+      window.clearInterval(whisperWakeIntervalRef.current);
+      whisperWakeIntervalRef.current = null;
+    }
+    const wr = whisperWakeRecorderRef.current;
+    whisperWakeRecorderRef.current = null;
+    if (wr && wr.state !== "inactive") {
+      try {
+        wr.stop();
+      } catch {
+        /* ignore */
+      }
+    }
+    whisperWakeRingRef.current = [];
+    setIsWakeArmed(false);
+  }, [setIsWakeArmed]);
+
+  const startWhisperWake = useCallback(() => {
+    if (typeof window === "undefined" || !micPermissionGranted || !useWhisperPath) return;
+    if (whisperWakeActiveRef.current || isListeningRef.current) return;
+    const stream = whisperStreamRef.current;
+    if (!stream) return;
+
+    stopWhisperWake();
+    whisperWakeActiveRef.current = true;
+    setIsWakeArmed(true);
+    const mime = pickAudioMimeType();
+    whisperWakeRingRef.current = [];
+    let rec: MediaRecorder;
+    try {
+      rec = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
+    } catch {
+      whisperWakeActiveRef.current = false;
+      setIsWakeArmed(false);
+      setWakeRestartTick((v) => v + 1);
+      return;
+    }
+    rec.ondataavailable = (e: BlobEvent) => {
+      if (e.data.size < 1) return;
+      const ring = whisperWakeRingRef.current;
+      ring.push(e.data);
+      while (ring.length > WAKE_RING_MAX_CHUNKS) ring.shift();
+    };
+    try {
+      rec.start(WHISPER_TIMESLICE_MS);
+    } catch {
+      whisperWakeActiveRef.current = false;
+      setIsWakeArmed(false);
+      setWakeRestartTick((v) => v + 1);
+      return;
+    }
+    whisperWakeRecorderRef.current = rec;
+
+    const flushWake = async () => {
+      if (!whisperWakeActiveRef.current || isListeningRef.current) return;
+      const ring = whisperWakeRingRef.current;
+      if (ring.length === 0) return;
+      const blob = new Blob(ring, { type: mime || rec.mimeType || "audio/webm" });
+      if (blob.size < WHISPER_MIN_WAKE_BYTES) return;
+      whisperAbortRef.current?.abort();
+      const ac = new AbortController();
+      whisperAbortRef.current = ac;
+      const gen = whisperGenRef.current;
+      try {
+        const text = await transcribeSpeechBlob(blob, ac.signal);
+        if (gen !== whisperGenRef.current) return;
+        if (!whisperWakeActiveRef.current || isListeningRef.current) return;
+        if (!hasWakePhrase(text)) return;
+        const now = Date.now();
+        if (now - cooldownRef.current < WAKE_COOLDOWN_MS) return;
+        cooldownRef.current = now;
+        stopWhisperWake();
+        playConfirmBeep();
+        dispatchListeningVisualPulse();
+        setIsListening(true);
+      } catch (e) {
+        if (e instanceof Error && e.name === "AbortError") return;
+        setWakeRestartTick((v) => v + 1);
+      }
+    };
+
+    whisperWakeIntervalRef.current = window.setInterval(() => {
+      void flushWake();
+    }, WHISPER_FLUSH_MS);
+  }, [
+    dispatchListeningVisualPulse,
+    micPermissionGranted,
+    playConfirmBeep,
+    setIsListening,
+    setIsWakeArmed,
+    stopWhisperWake,
+    useWhisperPath,
+  ]);
+
+  const finishWhisperCommandSession = useCallback(() => {
+    whisperGenRef.current += 1;
+    whisperAbortRef.current?.abort();
+    whisperAbortRef.current = null;
+    whisperCommandRunningRef.current = false;
+    if (whisperCommandIntervalRef.current !== null) {
+      window.clearInterval(whisperCommandIntervalRef.current);
+      whisperCommandIntervalRef.current = null;
+    }
+    if (whisperCommandTimeoutRef.current !== null) {
+      window.clearTimeout(whisperCommandTimeoutRef.current);
+      whisperCommandTimeoutRef.current = null;
+    }
+    const cr = whisperCommandRecorderRef.current;
+    whisperCommandRecorderRef.current = null;
+    if (cr && cr.state !== "inactive") {
+      try {
+        cr.stop();
+      } catch {
+        /* ignore */
+      }
+    }
+    whisperCommandChunksRef.current = [];
+    const finalText = whisperCommandLastTextRef.current.trim();
+    whisperCommandLastTextRef.current = "";
+    setIsListening(false);
+    if (finalText) {
+      setDraftMessage(finalText);
+      setLastTranscript(finalText);
+      runScenarioFromVoiceRef.current(finalText);
+    }
+  }, [setDraftMessage, setIsListening, setLastTranscript]);
+
+  const startWhisperCommand = useCallback(() => {
+    if (typeof window === "undefined" || !useWhisperPath) return;
+    if (whisperCommandRunningRef.current) return;
+    const stream = whisperStreamRef.current;
+    if (!stream) {
+      setIsListening(false);
+      return;
+    }
+    whisperGenRef.current += 1;
+    whisperAbortRef.current?.abort();
+    whisperAbortRef.current = null;
+    if (whisperCommandIntervalRef.current !== null) {
+      window.clearInterval(whisperCommandIntervalRef.current);
+      whisperCommandIntervalRef.current = null;
+    }
+    if (whisperCommandTimeoutRef.current !== null) {
+      window.clearTimeout(whisperCommandTimeoutRef.current);
+      whisperCommandTimeoutRef.current = null;
+    }
+    whisperCommandChunksRef.current = [];
+    whisperCommandLastTextRef.current = "";
+    whisperCommandLastChangeRef.current = 0;
+    whisperCommandRunningRef.current = true;
+
+    const mime = pickAudioMimeType();
+    whisperCommandMimeRef.current = mime;
+    let rec: MediaRecorder;
+    try {
+      rec = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
+    } catch {
+      whisperCommandRunningRef.current = false;
+      setIsListening(false);
+      return;
+    }
+    rec.ondataavailable = (e: BlobEvent) => {
+      if (e.data.size < 1) return;
+      whisperCommandChunksRef.current.push(e.data);
+    };
+    try {
+      rec.start(WHISPER_TIMESLICE_MS);
+    } catch {
+      whisperCommandRunningRef.current = false;
+      setIsListening(false);
+      return;
+    }
+    whisperCommandRecorderRef.current = rec;
+
+    const flushCmd = async () => {
+      if (!whisperCommandRunningRef.current) return;
+      const chunks = whisperCommandChunksRef.current;
+      const blob = new Blob(chunks, {
+        type: whisperCommandMimeRef.current || rec.mimeType || "audio/webm",
+      });
+      if (blob.size < WHISPER_MIN_CMD_BYTES) return;
+      whisperAbortRef.current?.abort();
+      const ac = new AbortController();
+      whisperAbortRef.current = ac;
+      const gen = whisperGenRef.current;
+      try {
+        const text = await transcribeSpeechBlob(blob, ac.signal);
+        if (gen !== whisperGenRef.current || !whisperCommandRunningRef.current) return;
+        if (text) {
+          setDraftMessage(text);
+          setLastTranscript(text);
+          if (text !== whisperCommandLastTextRef.current) {
+            whisperCommandLastTextRef.current = text;
+            whisperCommandLastChangeRef.current = Date.now();
+          }
+        }
+        const last = whisperCommandLastTextRef.current;
+        if (
+          last.trim().length > 0 &&
+          Date.now() - whisperCommandLastChangeRef.current >= COMMAND_SILENCE_MS
+        ) {
+          finishWhisperCommandSession();
+        }
+      } catch (e) {
+        if (e instanceof Error && e.name === "AbortError") return;
+        finishWhisperCommandSession();
+      }
+    };
+
+    whisperCommandIntervalRef.current = window.setInterval(() => {
+      void flushCmd();
+    }, WHISPER_FLUSH_MS);
+
+    whisperCommandTimeoutRef.current = window.setTimeout(() => {
+      finishWhisperCommandSession();
+    }, COMMAND_TIMEOUT_MS);
+  }, [
+    finishWhisperCommandSession,
+    setDraftMessage,
+    setIsListening,
+    setLastTranscript,
+    useWhisperPath,
   ]);
 
   const startCommandRecognition = useCallback(() => {
@@ -301,7 +572,7 @@ export function SimulatorWorkspace() {
     const SR = speechWindow.SpeechRecognition ?? speechWindow.webkitSpeechRecognition;
     if (!SR) {
       setIsListening(false);
-      if (micPermissionGranted) startWakeRecognition();
+      if (micPermissionGranted && !useWhisperPath) startWakeRecognition();
       return;
     }
     const prev = commandRecognitionRef.current;
@@ -381,7 +652,7 @@ export function SimulatorWorkspace() {
         setLastTranscript(finalText);
         runScenarioFromVoiceRef.current(finalText);
       }
-      if (micPermissionGranted) startWakeRecognition();
+      if (micPermissionGranted && !useWhisperPath) startWakeRecognition();
     };
 
     rec.onerror = (_evt: Event) => {
@@ -403,7 +674,13 @@ export function SimulatorWorkspace() {
     } catch {
       finish();
     }
-  }, [micPermissionGranted, setIsListening, setLastTranscript, startWakeRecognition]);
+  }, [
+    micPermissionGranted,
+    setIsListening,
+    setLastTranscript,
+    startWakeRecognition,
+    useWhisperPath,
+  ]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -453,13 +730,63 @@ export function SimulatorWorkspace() {
   }, [setIsWakeArmed, setMicPermissionGranted]);
 
   useEffect(() => {
-    if (!micPermissionGranted || isListening || wakeRecognitionRef.current) return;
+    if (typeof window === "undefined" || !micPermissionGranted || !useWhisperPath) {
+      setWhisperStreamReady(false);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        if (cancelled) {
+          stream.getTracks().forEach((t) => t.stop());
+          return;
+        }
+        whisperStreamRef.current = stream;
+        setWhisperStreamReady(true);
+      } catch {
+        if (!cancelled) setWhisperStreamReady(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+      setWhisperStreamReady(false);
+      whisperStreamRef.current?.getTracks().forEach((t) => t.stop());
+      whisperStreamRef.current = null;
+    };
+  }, [micPermissionGranted, useWhisperPath]);
+
+  useEffect(() => {
+    if (!micPermissionGranted || isListening || wakeRecognitionRef.current || useWhisperPath) return;
     startWakeRecognition();
-  }, [isListening, micPermissionGranted, startWakeRecognition, wakeRestartTick]);
+  }, [isListening, micPermissionGranted, startWakeRecognition, useWhisperPath, wakeRestartTick]);
+
+  useEffect(() => {
+    if (!micPermissionGranted || isListening || !useWhisperPath || !whisperStreamReady) return;
+    if (whisperWakeActiveRef.current) return;
+    void startWhisperWake();
+  }, [
+    isListening,
+    micPermissionGranted,
+    startWhisperWake,
+    useWhisperPath,
+    wakeRestartTick,
+    whisperStreamReady,
+  ]);
 
   useEffect(() => {
     if (isListening) {
+      if (useWhisperPath) {
+        void startWhisperCommand();
+        return;
+      }
       startCommandRecognition();
+      return;
+    }
+    if (useWhisperPath) {
+      if (whisperCommandRunningRef.current) {
+        finishWhisperCommandSession();
+      }
       return;
     }
     const rec = commandRecognitionRef.current;
@@ -469,11 +796,34 @@ export function SimulatorWorkspace() {
     } catch {
       // no-op
     }
-  }, [isListening, startCommandRecognition]);
+  }, [finishWhisperCommandSession, isListening, startCommandRecognition, startWhisperCommand, useWhisperPath]);
 
   useEffect(() => {
     return () => {
       stopWakeRecognition();
+      stopWhisperWake();
+      whisperGenRef.current += 1;
+      whisperAbortRef.current?.abort();
+      whisperCommandRunningRef.current = false;
+      if (whisperCommandIntervalRef.current !== null) {
+        window.clearInterval(whisperCommandIntervalRef.current);
+        whisperCommandIntervalRef.current = null;
+      }
+      if (whisperCommandTimeoutRef.current !== null) {
+        window.clearTimeout(whisperCommandTimeoutRef.current);
+        whisperCommandTimeoutRef.current = null;
+      }
+      const whisperCmdRec = whisperCommandRecorderRef.current;
+      whisperCommandRecorderRef.current = null;
+      if (whisperCmdRec && whisperCmdRec.state !== "inactive") {
+        try {
+          whisperCmdRec.stop();
+        } catch {
+          // no-op
+        }
+      }
+      whisperCommandChunksRef.current = [];
+      whisperCommandLastTextRef.current = "";
       const commandRec = commandRecognitionRef.current;
       if (commandRec) {
         try {
@@ -493,7 +843,7 @@ export function SimulatorWorkspace() {
       }
       commandBufferRef.current = "";
     };
-  }, [stopWakeRecognition]);
+  }, [stopWakeRecognition, stopWhisperWake]);
 
   const refreshScenariosList = useCallback(async () => {
     setListError(null);
@@ -894,9 +1244,11 @@ export function SimulatorWorkspace() {
             Clique em qualquer lugar da página para autorizar o microfone e ativar o comando por voz.
           </p>
         ) : null}
-        {!speechSupported ? (
-          <p className="rounded-lg border border-violet-500/30 bg-violet-900/20 px-3 py-2 text-xs text-violet-100">
-            Este navegador não suporta reconhecimento de voz contínuo. Use o comando por texto neste campo.
+        {useWhisperPath ? (
+          <p className="rounded-lg border border-cyan-500/25 bg-cyan-950/30 px-3 py-2 text-xs text-cyan-100">
+            Voz via servidor (OpenAI Whisper): Safari/iOS e Firefox, etc. Configure{" "}
+            <span className="font-mono">OPENAI_API_KEY</span> no backend. Fragmentos de áudio a cada{" "}
+            {WHISPER_FLUSH_MS} ms (a latência percebida inclui rede + Whisper).
           </p>
         ) : null}
         <div
@@ -945,7 +1297,13 @@ export function SimulatorWorkspace() {
                     : "border-white/20 bg-white/5 text-slate-300"
               }`}
             >
-              {isListening ? "Code Chroma ativa. Pode falar." : isWakeArmed ? "Wake ativo: diga hey magic" : "Wake inativo"}
+              {isListening
+                ? "Code Chroma ativa. Pode falar."
+                : isWakeArmed
+                  ? useWhisperPath
+                    ? "Wake Whisper: diga hey magic"
+                    : "Wake ativo: diga hey magic"
+                  : "Wake inativo"}
             </span>
             <button
               type="button"
