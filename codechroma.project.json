@@ -1,12 +1,24 @@
 {
   "slug": "finances-magic",
   "title": "Finance Magic",
-  "summary": "Finance Magic - Simulador de Cenários Financeiros",
+  "summary": "Plataforma fullstack de simulação de cenários financeiros com IA, ingestão de dados de mercado e dashboard interativo.",
+  "technologies": [
+    "Next.js",
+    "React",
+    "TypeScript",
+    "Tailwind CSS",
+    "Node.js",
+    "Express",
+    "PostgreSQL",
+    "Prisma",
+    "Supabase",
+    "Vitest"
+  ],
   "highlights": [
-    "Hero com vídeo de background para valorizar a experiência visual da marca",
-    "Página inicial com seções de diferenciais, destaque de cardápio e contato",
-    "Página institucional com informações de funcionamento e proposta gastronômica",
-    "Cardápio em layout responsivo com navegação clara"
+    "Simulador de cenários com IA e histórico de execuções para análise de impacto em carteira",
+    "Backend em Express com ingestão automatizada de mercado, macroeconomia, notícias e clima",
+    "Persistência em PostgreSQL com Prisma e autenticação via Supabase",
+    "Frontend em Next.js com experiência interativa, visualização de dados e integração em tempo real com a API"
   ],
   "links": {
     "demo": "https://finances-magic.vercel.app",
