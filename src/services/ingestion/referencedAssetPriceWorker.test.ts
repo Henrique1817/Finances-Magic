@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { floorUtcToIntervalMs } from "./referencedAssetPriceWorker";
+import { floorUtcToIntervalMs } from "./timeBuckets";
 
 describe("floorUtcToIntervalMs", () => {
   it("alinha ao bucket de 30 min em UTC", () => {

@@ -5,6 +5,7 @@ import { runWithIngestionRunLog } from "../../lib/ingestionRun";
 import { logger } from "../../lib/logger";
 import { prisma } from "../../lib/prisma";
 import { sleep } from "../../lib/sleep";
+import { floorUtcToIntervalMs } from "./timeBuckets";
 import {
   canUseProvider,
   markProvider429,
@@ -15,13 +16,6 @@ import {
 const log = logger.child({ worker: "referencedAssetPrice" });
 const YAHOO_CHART_URL = "https://query1.finance.yahoo.com/v8/finance/chart";
 const THIRTY_MIN_MS = 30 * 60 * 1000;
-
-/** Arredonda instante UTC ao bucket de `intervalMs` (ex.: 30 min). */
-export function floorUtcToIntervalMs(d: Date, intervalMs: number): Date {
-  const t = d.getTime();
-  const floored = Math.floor(t / intervalMs) * intervalMs;
-  return new Date(floored);
-}
 
 type YahooBar = {
   bucketStart: Date;

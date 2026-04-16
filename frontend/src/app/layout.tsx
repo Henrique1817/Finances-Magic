@@ -9,8 +9,8 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Code Chroma",
-  description: "Simulador global de risco",
+  title: "Finance Magic",
+  description: "Finance Magic - Simulador de Cenários Financeiros com Inteligência Artificial",
 };
 
 export default function RootLayout({

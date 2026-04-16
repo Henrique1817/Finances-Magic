@@ -22,40 +22,76 @@ Site de referência: [https://code-chroma.vercel.app](https://code-chroma.vercel
 
 No projeto **CodeChroma** na Vercel você precisa de, entre outras:
 
-- `REVALIDATE_SECRET`: protege `/api/upload`, `/api/blob` e `/api/revalidate`.
+- `UPLOAD_API_TOKEN`: token principal para autenticar chamadas de upload.
+- `UPLOAD_HMAC_SECRET`: segredo usado pelo servidor para assinar e validar requisições.
+- `ALLOWED_UPLOAD_ORIGINS`: lista CSV de origens permitidas (ex.: `https://code-chroma.vercel.app,http://localhost:3000`).
+- `REVALIDATE_SECRET`: legado/compatibilidade para rotas antigas (não recomendado para novos clientes).
 - `BLOB_READ_WRITE_TOKEN`: usado pelo servidor para gravar no Blob.
 
-Guarde o `REVALIDATE_SECRET` só em ambiente seguro (Vercel, 1Password, etc.).
+Guarde os segredos (`UPLOAD_API_TOKEN`, `UPLOAD_HMAC_SECRET`, etc.) apenas em ambiente seguro (Vercel, 1Password, etc.).
 
-## 1. Enviar imagens (arquivos menores)
+## 1. Fluxo atual de upload seguro (NUNCA confiar no frontend)
 
-Imagens costumam ir pelo endpoint da função:
+Todas as rotas de API validam no backend:
 
-`POST /api/upload?secret=<REVALIDATE_SECRET>`  
-`multipart/form-data`: campo `file` + opcional `project=<slug>` (ex.: `learn-music`).
+- origem (`Origin`) via `ALLOWED_UPLOAD_ORIGINS`
+- limite/rate limit por IP
+- bloqueio temporário de IP para falhas repetidas
+- autenticação por `Authorization: Bearer <UPLOAD_API_TOKEN>`
+- assinatura HMAC (`x-upload-ts`, `x-upload-nonce`, `x-upload-signature`)
+- `Content-Type` esperado por rota
+- validação do payload e do arquivo (MIME, extensão e tamanho)
 
-**PowerShell (use `curl.exe`):**
+### Etapas
+
+1. Obter assinatura: `POST /api/upload-signature`
+2. Enviar arquivo: `POST /api/upload` (ou fluxo `POST /api/blob`)
+3. Salvar a URL retornada no `codechroma.project.json`
+
+## 2. Exemplo completo (PowerShell com `curl.exe`)
+
+### 2.1 Pedir assinatura ao servidor
 
 ```powershell
-curl.exe -X POST "https://code-chroma.vercel.app/api/upload?secret=<REVALIDATE_SECRET>" `
+$TOKEN = "<UPLOAD_API_TOKEN>"
+
+$sig = curl.exe -s -X POST "https://code-chroma.vercel.app/api/upload-signature" `
+  -H "Content-Type: application/json" `
+  -H "Authorization: Bearer $TOKEN" `
+  -d "{""method"":""POST"",""pathname"":""/api/upload""}"
+
+$ts = ($sig | ConvertFrom-Json).headers."x-upload-ts"
+$nonce = ($sig | ConvertFrom-Json).headers."x-upload-nonce"
+$signature = ($sig | ConvertFrom-Json).headers."x-upload-signature"
+```
+
+### 2.2 Enviar arquivo para `/api/upload`
+
+```powershell
+curl.exe -X POST "https://code-chroma.vercel.app/api/upload" `
+  -H "Authorization: Bearer $TOKEN" `
+  -H "x-upload-ts: $ts" `
+  -H "x-upload-nonce: $nonce" `
+  -H "x-upload-signature: $signature" `
   -F "file=@C:\Learn-Music\Web\public\image\01_Computer.png" `
   -F "project=learn-music"
 ```
 
-A resposta é JSON com um campo **`url`**. Use essa URL em `media[].src`.
+A resposta traz JSON com `ok`, `url` e `path`. Use `url` em `media[].src`.
 
-> Se o arquivo for grande demais, a Vercel pode responder **413** (`FUNCTION_PAYLOAD_TOO_LARGE`). Nesse caso use o fluxo de vídeo/upload direto (próxima seção).
+## 3. Upload grande (vídeos) via token de Blob
 
-## 2. Enviar vídeos ou arquivos grandes
+Para arquivos maiores, prefira o fluxo de Blob tokenizado:
 
-O fluxo recomendado evita passar o arquivo inteiro pela serverless function:
+1. pedir assinatura para `pathname=/api/blob` em `/api/upload-signature`
+2. usar essa assinatura no `POST /api/blob`
+3. realizar o upload direto no Blob client (quando aplicável)
 
-- Abra no navegador: `https://code-chroma.vercel.app/uploads` e faça o upload guiado; **ou**
-- Use o handshake `POST /api/blob?secret=<REVALIDATE_SECRET>` conforme a documentação em [`README-CODECHROMA.md`](README-CODECHROMA.md) (seção de upload grande / exemplos).
+Também é possível usar a página interna:
 
-O Blob deve devolver uma URL pública para você colar no manifesto.
+- `https://code-chroma.vercel.app/uploads`
 
-## 3. Atualizar o `codechroma.project.json`
+## 4. Atualizar o `codechroma.project.json`
 
 Edite [`codechroma.project.json`](codechroma.project.json) na raiz. Exemplo de entradas em `media`:
 
@@ -82,7 +118,7 @@ Edite [`codechroma.project.json`](codechroma.project.json) na raiz. Exemplo de e
 
 Valide o JSON (por exemplo: `node -e "JSON.parse(require('fs').readFileSync('codechroma.project.json','utf8'))"`).
 
-## 4. Revalidar o site (atualização imediata)
+## 5. Revalidar o site (atualização imediata)
 
 Depois do push no GitHub, o CodeChroma pode atualizar sozinho conforme o ISR; para forçar:
 
@@ -94,26 +130,14 @@ curl.exe -X POST "https://code-chroma.vercel.app/api/revalidate?secret=<REVALIDA
 
 Isso revalida `/projects/learn-music` e o catálogo `/projects` (comportamento descrito no `README-CODECHROMA.md`).
 
-## 5. Script opcional neste repo
+## 6. O que não usar mais (legado)
 
-Existe o script [`scripts/upload-codechroma.mjs`](scripts/upload-codechroma.mjs) para automatizar uploads via `/api/upload` (imagens e arquivos que couberem no limite da função). Defina as variáveis de ambiente antes de rodar:
+- `POST /api/upload?secret=<...>` como fluxo principal
+- `POST /api/blob?secret=<...>` sem assinatura HMAC
+- confiar em validação apenas no frontend
+- refletir payload completo do contato para o cliente
 
-- `CODECHROMA_UPLOAD_ENDPOINT` — ex.: `https://code-chroma.vercel.app`
-- `CODECHROMA_SECRET` — seu `REVALIDATE_SECRET`
-- `CODECHROMA_PROJECT` — opcional, default `learn-music`
-
-**cmd.exe:**
-
-```bat
-set CODECHROMA_UPLOAD_ENDPOINT=https://code-chroma.vercel.app
-set CODECHROMA_SECRET=<REVALIDATE_SECRET>
-set CODECHROMA_PROJECT=learn-music
-node scripts\upload-codechroma.mjs
-```
-
-Para vídeos que retornarem 413, use a página `/uploads` ou o fluxo `/api.blob` descrito no `README-CODECHROMA.md`.
-
-## Referências
+## 7. Referências
 
 - [`README-CODECHROMA.md`](README-CODECHROMA.md) — arquitetura do site, env vars, exemplos de `curl` e endpoints.
 - [`codechroma.project.json`](codechroma.project.json) — manifesto atual do Learn Music.
