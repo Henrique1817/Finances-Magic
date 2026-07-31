@@ -77,7 +77,7 @@ API REST em **Node.js + TypeScript + Express** para o MVP da Code Chroma: ingest
 | Variável | Obrigatória | Descrição |
 |----------|-------------|-----------|
 | `DATABASE_URL` | Sim | URL PostgreSQL para a app (no Supabase: preferir *Transaction pooler* `:6543` com `?pgbouncer=true`) |
-| `DIRECT_URL` | Sim | URL para migrações Prisma: **Session pooler** (`*.pooler.supabase.com:5432`) no Railway/IPv4; **Direct** (`db.*.supabase.co:5432`) se IPv6 disponível; em Postgres local pode ser igual a `DATABASE_URL` |
+| `DIRECT_URL` | Sim | URL para migrações Prisma (Neon: host **sem** `-pooler`; Supabase legado: Session pooler `:5432` em hosts só IPv4) |
 | `SUPABASE_URL` | Sim | URL do projeto Supabase (validação de JWT no backend) |
 | `SUPABASE_ANON_KEY` | Sim | Chave anon/public do Supabase (`auth.getUser`) |
 | `PORT` | Não | Porta HTTP (padrão `3000`) |
@@ -115,18 +115,36 @@ API REST em **Node.js + TypeScript + Express** para o MVP da Code Chroma: ingest
 | **Raiz do backend** — ficheiro `.env` | Desenvolvimento local; copie de `.env.example`. Não commite `.env`. |
 | **Frontend** — `frontend/.env.local` | `NEXT_PUBLIC_*` (URL da API, Supabase). Ver `frontend/.env.example`. |
 | **GitHub Actions** — *Settings → Secrets and variables → Actions* | CI, deploy e workflow de ingestão (ver secção [CI/CD](#cicd-github-actions)). |
-| **Railway / Render / Docker** | Painel de variáveis do serviço ou compose — mesmas chaves que em produção no backend. |
+| **Render** (API) | Variáveis do Web Service — ver [Deploy no Render](#deploy-no-render-gratuito). |
 
-### Supabase (Postgres na nuvem)
+### Supabase Auth + Neon Postgres
 
-O Postgres do projeto vive no **Supabase**; a API liga-se com Prisma usando **duas** URLs:
+O **login** continua no **Supabase Auth** (`SUPABASE_URL` + `SUPABASE_ANON_KEY`). O **Postgres de dados** recomenda-se no **Neon** (`DATABASE_URL` + `DIRECT_URL`).
 
-1. No Supabase: **Project Settings** → **Database** → **Connection string** → **URI**.
-2. **`DATABASE_URL`** — modo **Transaction** (pooler, porta **6543**). A string deve começar por `postgresql://` ou `postgres://` e, no pooler, incluir normalmente `?pgbouncer=true` (como no snippet do painel).
-3. **`DIRECT_URL`** — Para **`prisma migrate deploy`**. Em **Railway** e outros hosts **só IPv4**, a conexão **Direct** (`db.<ref>.supabase.co`) costuma falhar (**P1001**): o Supabase expõe IPv6 nesse host. Usa então o **Session pooler** (Connect → **Session mode**, host `*.pooler.supabase.com`, porta **5432**, utilizador `postgres.<ref>`). Em rede com IPv6 ou em local, **Direct** continua válida.
-4. **`SUPABASE_URL`** e **`SUPABASE_ANON_KEY`** — **Project Settings** → **API** (URL do projeto e chave `anon` / public).
+1. Neon Console → Connection string → **URI** (pooled com `-pooler` → `DATABASE_URL`; sem `-pooler` → `DIRECT_URL`; ambas com `sslmode=require`).
+2. Supabase → **Project Settings** → **API** → URL + chave `anon`.
 
-No **Railway** (ou outro host), coloca estas quatro variáveis no **mesmo** serviço da API. No **`.env` local**, se usares um Postgres simples (não pooler), podes definir **`DIRECT_URL`** igual a **`DATABASE_URL`**.
+No **Render**, coloca estas quatro variáveis no mesmo Web Service. Em Postgres local, `DIRECT_URL` pode ser igual a `DATABASE_URL`.
+
+### Deploy no Render (gratuito)
+
+Substitui a Railway. O ficheiro `render.yaml` define o serviço `code-chroma-api` (plano free).
+
+1. Cria conta em [render.com](https://render.com) → **New** → **Blueprint** → liga o repositório GitHub `Finances-Magic` (branch `master`).
+2. No painel, preenche as env vars marcadas como *sync: false* (ver tabela abaixo).
+3. Após o 1.º deploy, copia a URL (`https://….onrender.com`) para `PUBLIC_API_BASE_URL` e para `NEXT_PUBLIC_API_BASE_URL` no frontend.
+4. Em **Settings → Deploy Hook**, cria um hook e guarda o URL no secret GitHub `RENDER_DEPLOY_HOOK` (o workflow `main.yml` passa a redeployar após CI).
+5. Mantém `INGESTION_CRON_ENABLED=false` no Render: a ingestão corre no **GitHub Actions** a cada 12 h (`data_ingestion.yml`). O free tier dorme sem tráfego e não é fiável para cron.
+
+| Variável no Render | Origem |
+|--------------------|--------|
+| `DATABASE_URL` / `DIRECT_URL` | Neon (pooler / direct) |
+| `SUPABASE_URL` / `SUPABASE_ANON_KEY` | Supabase API |
+| `FRONTEND_ORIGINS` | Origem do front (ex. `https://teu-app.vercel.app`) |
+| `PUBLIC_API_BASE_URL` | URL pública do próprio serviço Render |
+| `GEMINI_API_KEY` etc. | Opcionais (IA / APIs de mercado) |
+
+Health check: `GET /health`.
 
 ---
 

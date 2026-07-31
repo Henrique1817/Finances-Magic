@@ -5,8 +5,9 @@
   "description": "Backend MVP Code Chroma — Simulador de Cenários",
   "main": "dist/index.js",
   "scripts": {
-    "build": "tsc",
+    "build": "prisma generate --config prisma.config.ts && tsc",
     "start": "node dist/index.js",
+    "start:migrate": "prisma migrate deploy --config prisma.config.ts && node dist/index.js",
     "dev": "tsx watch src/index.ts",
     "pretest": "prisma generate --config prisma.config.ts",
     "db:generate": "prisma generate --config prisma.config.ts",

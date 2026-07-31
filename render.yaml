@@ -1,0 +1,47 @@
+# Blueprint Render — API Code Chroma (plano free)
+# Docs: https://render.com/docs/blueprint-spec
+#
+# Ingestão diária fica no GitHub Actions (data_ingestion.yml).
+# No free tier o serviço dorme sem tráfego — cron in-process fica desligado.
+
+services:
+  - type: web
+    name: code-chroma-api
+    runtime: node
+    plan: free
+    region: oregon
+    branch: master
+    rootDir: .
+    buildCommand: npm ci && npx prisma generate --config prisma.config.ts && npm run build
+    startCommand: npx prisma migrate deploy --config prisma.config.ts && npm start
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: INGESTION_CRON_ENABLED
+        value: "false"
+      - key: CORS_ALLOW_VERCEL_PREVIEWS
+        value: "true"
+      - key: DATABASE_URL
+        sync: false
+      - key: DIRECT_URL
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: FRONTEND_ORIGINS
+        sync: false
+      - key: PUBLIC_API_BASE_URL
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: ALPHA_VANTAGE_API_KEY
+        sync: false
+      - key: FRED_API_KEY
+        sync: false
+      - key: NEWS_API_KEY
+        sync: false
+      - key: CLIMATE_REGION_KEYS
+        sync: false

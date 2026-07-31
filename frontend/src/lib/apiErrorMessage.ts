@@ -23,7 +23,7 @@ export function messageFromApiError(e: unknown): string {
   if (e.message === "Network Error") {
     return (
       "Não foi possível ligar à API (o browser bloqueou ou não há rota). Confirme: (1) NEXT_PUBLIC_API_BASE_URL sem barra no fim e reinício do Next após mudar o .env; " +
-      "(2) no Railway, FRONTEND_ORIGINS inclui a origem exata do site (https://seu-app.vercel.app) — http://localhost:3000 e http://127.0.0.1:3000 são origens diferentes; " +
+      "(2) no Render, FRONTEND_ORIGINS inclui a origem exata do site (https://seu-app.vercel.app) — http://localhost:3000 e http://127.0.0.1:3000 são origens diferentes; " +
       "(3) para deploy preview *.vercel.app, na API use CORS_ALLOW_VERCEL_PREVIEWS=true ou acrescente a URL exata em FRONTEND_ORIGINS."
     );
   }

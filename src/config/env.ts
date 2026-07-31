@@ -104,7 +104,7 @@ export const env = {
   corsAllowVercelPreviews: process.env.CORS_ALLOW_VERCEL_PREVIEWS === "true",
   /**
    * URL pública da API (https://… sem barra final), usada no redirect OAuth (Supabase).
-   * Se vazio, usa `X-Forwarded-*` / `Host` do pedido (Railway com trust proxy).
+   * Se vazio, usa `X-Forwarded-*` / `Host` do pedido (Render/proxy com trust proxy).
    */
   publicApiBaseUrl: optional("PUBLIC_API_BASE_URL"),
 };
