@@ -9,7 +9,7 @@ datasource db {
   provider  = "postgresql"
 }
 
-/// Usuário autenticado via Supabase Auth (`sub` do JWT = este id)
+/// Usuário autenticado via Neon Auth (`sub` do JWT = este id)
 model User {
   id        String   @id @db.Uuid
   email     String   @unique

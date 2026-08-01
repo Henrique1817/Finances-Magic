@@ -78,8 +78,8 @@ API REST em **Node.js + TypeScript + Express** para o MVP da Code Chroma: ingest
 |----------|-------------|-----------|
 | `DATABASE_URL` | Sim | URL PostgreSQL para a app (no Supabase: preferir *Transaction pooler* `:6543` com `?pgbouncer=true`) |
 | `DIRECT_URL` | Sim | URL para migrações Prisma (Neon: host **sem** `-pooler`; Supabase legado: Session pooler `:5432` em hosts só IPv4) |
-| `SUPABASE_URL` | Sim | URL do projeto Supabase (validação de JWT no backend) |
-| `SUPABASE_ANON_KEY` | Sim | Chave anon/public do Supabase (`auth.getUser`) |
+| `NEON_AUTH_URL` | Sim | URL do Neon Auth (…/neondb/auth) — Console Neon → Auth |
+| `NEON_AUTH_TRUSTED_ORIGIN` | Não | Origin do front enviada ao Neon Auth (padrão: 1.ª de `FRONTEND_ORIGINS`) |
 | `PORT` | Não | Porta HTTP (padrão `3000`) |
 | `FRONTEND_ORIGINS` | Não | Lista separada por vírgulas para CORS (padrão: `localhost:5173` e `localhost:3000`) |
 | `NODE_ENV` | Não | `development` \| `production` |
@@ -102,29 +102,31 @@ API REST em **Node.js + TypeScript + Express** para o MVP da Code Chroma: ingest
 | **Alpha Vantage** | `ALPHA_VANTAGE_API_KEY` | [alphavantage.co/support/#api-key](https://www.alphavantage.co/support/#api-key) — registo gratuito; atenção aos limites do plano free (ex.: 25 pedidos/dia). |
 | **FRED (Federal Reserve)** | `FRED_API_KEY` | [fred.stlouisfed.org/docs/api/api_key.html](https://fred.stlouisfed.org/docs/api/api_key.html) — criar conta em [fredaccount.stlouisfed.org](https://fredaccount.stlouisfed.org) e pedir API Key. |
 | **NewsAPI** | `NEWS_API_KEY` | [newsapi.org/register](https://newsapi.org/register) — plano developer; o endpoint `everything` pode ter restrições em ambiente de produção (ler termos do site). |
-| **Supabase** | `SUPABASE_URL`, `SUPABASE_ANON_KEY` | Painel do projeto → **Project Settings** → **API** (URL + chave `anon` / public). |
+| **Neon Auth** | `NEON_AUTH_URL` | [console.neon.tech](https://console.neon.tech) → projeto → **Auth** → Configuration → Base URL |
 | **PostgreSQL** | `DATABASE_URL`, `DIRECT_URL` | Supabase → **Database** → *Connection string*; ou credenciais do teu Postgres. |
 | **Open-Meteo (clima)** | — | **Não usa chave** — API pública em [open-meteo.com](https://open-meteo.com/). Configura só `CLIMATE_REGION_KEYS` para ativar o worker. |
 
-**Nota:** O frontend **não** precisa de `OPENAI_API_KEY`; a chave fica **só no servidor** (backend). O browser chama `POST /api/v1/ai/scenario` com o JWT Supabase (cada sucesso grava um registo em `scenarios` e devolve `scenarioId` + `title`). A lista e o detalhe sincronizam com **`GET /api/v1/scenarios`** e **`GET /api/v1/scenarios/:scenarioId`** (autenticados); **`DELETE`** remove o registo do utilizador.
+**Nota:** O frontend **não** precisa de `OPENAI_API_KEY`; a chave fica **só no servidor** (backend). O browser chama `POST /api/v1/ai/scenario` com o JWT Neon Auth (cada sucesso grava um registo em `scenarios` e devolve `scenarioId` + `title`). A lista e o detalhe sincronizam com **`GET /api/v1/scenarios`** e **`GET /api/v1/scenarios/:scenarioId`** (autenticados); **`DELETE`** remove o registo do utilizador.
 
 ### Onde configurar
 
 | Onde | Uso |
 |------|-----|
 | **Raiz do backend** — ficheiro `.env` | Desenvolvimento local; copie de `.env.example`. Não commite `.env`. |
-| **Frontend** — `frontend/.env.local` | `NEXT_PUBLIC_*` (URL da API, Supabase). Ver `frontend/.env.example`. |
+| **Frontend** — `frontend/.env.local` | `NEXT_PUBLIC_API_BASE_URL`, `NEXT_PUBLIC_NEON_AUTH_URL`. Ver `frontend/.env.example`. |
 | **GitHub Actions** — *Settings → Secrets and variables → Actions* | CI, deploy e workflow de ingestão (ver secção [CI/CD](#cicd-github-actions)). |
 | **Render** (API) | Variáveis do Web Service — ver [Deploy no Render](#deploy-no-render-gratuito). |
 
-### Supabase Auth + Neon Postgres
+### Neon Auth + Neon Postgres
 
-O **login** continua no **Supabase Auth** (`SUPABASE_URL` + `SUPABASE_ANON_KEY`). O **Postgres de dados** recomenda-se no **Neon** (`DATABASE_URL` + `DIRECT_URL`).
+Auth e base de dados no **mesmo projeto Neon**:
 
-1. Neon Console → Connection string → **URI** (pooled com `-pooler` → `DATABASE_URL`; sem `-pooler` → `DIRECT_URL`; ambas com `sslmode=require`).
-2. Supabase → **Project Settings** → **API** → URL + chave `anon`.
+1. `DATABASE_URL` / `DIRECT_URL` — connection strings Neon (pooler / direct).
+2. `NEON_AUTH_URL` — Auth → Configuration → Base URL (…`/neondb/auth`).
+3. No Neon Auth, adiciona a origem do front em **trusted_origins** (e define `NEON_AUTH_TRUSTED_ORIGIN` no Render).
+4. Frontend: `NEXT_PUBLIC_NEON_AUTH_URL` = o mesmo Base URL (OAuth Google).
 
-No **Render**, coloca estas quatro variáveis no mesmo Web Service. Em Postgres local, `DIRECT_URL` pode ser igual a `DATABASE_URL`.
+No **Render**, coloca `DATABASE_URL`, `DIRECT_URL`, `NEON_AUTH_URL`, `NEON_AUTH_TRUSTED_ORIGIN` e `FRONTEND_ORIGINS` no Web Service.
 
 ### Deploy no Render (gratuito)
 
@@ -139,7 +141,7 @@ Substitui a Railway. O ficheiro `render.yaml` define o serviço `code-chroma-api
 | Variável no Render | Origem |
 |--------------------|--------|
 | `DATABASE_URL` / `DIRECT_URL` | Neon (pooler / direct) |
-| `SUPABASE_URL` / `SUPABASE_ANON_KEY` | Supabase API |
+| `NEON_AUTH_URL` / `NEON_AUTH_TRUSTED_ORIGIN` | Neon Auth |
 | `FRONTEND_ORIGINS` | Origem do front (ex. `https://teu-app.vercel.app`) |
 | `PUBLIC_API_BASE_URL` | URL pública do próprio serviço Render |
 | `OPENAI_API_KEY` etc. | Opcionais (IA / APIs de mercado) |
@@ -178,8 +180,8 @@ Crie em **Settings → Secrets and variables → Actions → New repository secr
 | `RENDER_DEPLOY_HOOK` | Deploy automático no Render | URL do *Deploy Hook* do serviço Render. Sem este secret, o job de deploy apenas regista aviso e termina com sucesso. |
 | `DATABASE_URL` | Workflow de ingestão | URL PostgreSQL (ex.: pooler Supabase). |
 | `DIRECT_URL` | Workflow de ingestão | URL direta Postgres (ex.: Supabase `:5432`) — necessária para `prisma generate` com o schema atual. |
-| `SUPABASE_URL` | Ingestão | O script carrega `config/env` (via workers); estes valores são **obrigatórios** em runtime. |
-| `SUPABASE_ANON_KEY` | Ingestão | Chave anon do mesmo projeto. |
+| `NEON_AUTH_URL` | Ingestão | O script carrega `config/env`; valor obrigatório em runtime. |
+| `NEON_AUTH_TRUSTED_ORIGIN` | Ingestão | Origin trusted (ex. URL do front). |
 | `ALPHA_VANTAGE_API_KEY` | Ingestão de preços | Opcional; sem valor, o worker usa mock ou ignora conforme lógica existente. |
 | `FRED_API_KEY` | Ingestão macro | Opcional. |
 | `NEWS_API_KEY` | Ingestão de notícias / NLP | Opcional. |
@@ -485,7 +487,7 @@ Desligar os crons: `INGESTION_CRON_ENABLED=false`.
 
 ## Autenticação
 
-O backend exige `SUPABASE_URL` e `SUPABASE_ANON_KEY` no ambiente (validação de JWT onde aplicável). Os endpoints públicos documentados podem evoluir para rotas protegidas; em exposição ampla, use API Gateway, WAF ou reverse proxy com rate limit.
+O backend exige `NEON_AUTH_URL` no ambiente (validação de JWT via JWKS). Os endpoints públicos documentados podem evoluir para rotas protegidas; em exposição ampla, use API Gateway, WAF ou reverse proxy com rate limit.
 
 ---
 

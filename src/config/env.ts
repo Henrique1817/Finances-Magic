@@ -21,9 +21,29 @@ export const env = {
   logLevel:
     process.env.LOG_LEVEL ?? (process.env.NODE_ENV === "production" ? "info" : "debug"),
   databaseUrl: required("DATABASE_URL"),
-  /** Supabase — validação de JWT no backend (`auth.getUser`) */
-  supabaseUrl: required("SUPABASE_URL"),
-  supabaseAnonKey: required("SUPABASE_ANON_KEY"),
+  /**
+   * Neon Auth (Managed Better Auth).
+   * Ex.: https://ep-xxx.neonauth.region.aws.neon.tech/neondb/auth
+   */
+  neonAuthUrl: required("NEON_AUTH_URL").replace(/\/$/, ""),
+  neonAuthJwksUrl:
+    optional("NEON_AUTH_JWKS_URL")?.replace(/\/$/, "") ||
+    `${required("NEON_AUTH_URL").replace(/\/$/, "")}/.well-known/jwks.json`,
+  /** Issuer do JWT = origin do NEON_AUTH_URL (sem path). */
+  neonAuthIssuer: (() => {
+    const base = required("NEON_AUTH_URL").replace(/\/$/, "");
+    return new URL(base).origin;
+  })(),
+  /**
+   * Origin enviada nos pedidos server→Neon Auth (CSRF / trusted_origins).
+   * Use a origem do front (ex. http://localhost:3000 ou https://app.vercel.app).
+   * Se houver lista separada por vírgulas, usa a primeira.
+   */
+  neonAuthTrustedOrigin: (
+    parseCommaList(optional("NEON_AUTH_TRUSTED_ORIGIN"))[0] ||
+    parseOriginsList(process.env.FRONTEND_ORIGINS)[0] ||
+    "http://localhost:3000"
+  ).replace(/\/$/, ""),
   alphaVantageApiKey: optional("ALPHA_VANTAGE_API_KEY"),
   brapiToken: optional("BRAPI_TOKEN"),
   yfinancePythonExecutable: process.env.YFINANCE_PYTHON_EXECUTABLE?.trim() || "python",
@@ -112,7 +132,7 @@ export const env = {
    */
   corsAllowVercelPreviews: process.env.CORS_ALLOW_VERCEL_PREVIEWS === "true",
   /**
-   * URL pública da API (https://… sem barra final), usada no redirect OAuth (Supabase).
+   * URL pública da API (https://… sem barra final), usada em docs / redirects.
    * Se vazio, usa `X-Forwarded-*` / `Host` do pedido (Render/proxy com trust proxy).
    */
   publicApiBaseUrl: optional("PUBLIC_API_BASE_URL"),

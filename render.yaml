@@ -27,9 +27,9 @@ services:
         sync: false
       - key: DIRECT_URL
         sync: false
-      - key: SUPABASE_URL
+      - key: NEON_AUTH_URL
         sync: false
-      - key: SUPABASE_ANON_KEY
+      - key: NEON_AUTH_TRUSTED_ORIGIN
         sync: false
       - key: FRONTEND_ORIGINS
         sync: false

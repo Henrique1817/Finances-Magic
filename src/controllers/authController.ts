@@ -2,8 +2,12 @@ import type { Request, Response } from "express";
 
 import { env } from "../config/env";
 import { sendError, sendSuccess } from "../lib/http";
-import { supabaseAnon } from "../lib/supabaseAnonClient";
-import { createSupabaseServerClient } from "../lib/supabaseServerCookies";
+import {
+  neonRefreshAccessToken,
+  neonSignInWithPassword,
+  neonSignUpWithPassword,
+  neonStartGoogleOAuth,
+} from "../lib/neonAuth";
 import { ensureUserWallet } from "../services/walletService";
 
 const OAUTH_FRONTEND_COOKIE = "cc_oauth_frontend";
@@ -49,7 +53,8 @@ function isLikelyEmailConflictMessage(raw: string): boolean {
     msg.includes("already registered") ||
     msg.includes("already exists") ||
     msg.includes("identity is already linked") ||
-    msg.includes("email") && msg.includes("exists")
+    (msg.includes("email") && msg.includes("exists")) ||
+    msg.includes("user already exists")
   );
 }
 
@@ -62,100 +67,62 @@ function normalizeOAuthErrorMessage(raw: string): string {
 
 export async function authLogin(req: Request, res: Response): Promise<void> {
   const body = req.validatedBody as { email: string; password: string };
-  const { data, error } = await supabaseAnon.auth.signInWithPassword({
-    email: body.email.trim().toLowerCase(),
-    password: body.password,
-  });
-  if (error || !data.session) {
+  try {
+    const session = await neonSignInWithPassword(body.email.trim().toLowerCase(), body.password);
+    await ensureUserWallet(session.user.id, session.user.email);
+    sendSuccess(res, session);
+  } catch (err) {
     const msg =
-      error?.message === "Invalid login credentials"
-        ? "E-mail ou senha incorretos."
-        : (error?.message ?? "Falha no login.");
+      err instanceof Error && err.message
+        ? err.message.includes("Invalid") || (err as { status?: number }).status === 401
+          ? "E-mail ou senha incorretos."
+          : err.message
+        : "Falha no login.";
     sendError(res, 401, msg);
-    return;
   }
-  const s = data.session;
-  sendSuccess(res, {
-    access_token: s.access_token,
-    refresh_token: s.refresh_token,
-    expires_at: s.expires_at,
-    user: { id: s.user.id, email: s.user.email ?? undefined },
-  });
 }
 
 export async function authRegister(req: Request, res: Response): Promise<void> {
   const body = req.validatedBody as { email: string; password: string };
-  const { data, error } = await supabaseAnon.auth.signUp({
-    email: body.email.trim().toLowerCase(),
-    password: body.password,
-  });
-  if (error) {
-    sendError(res, 400, error.message);
-    return;
+  try {
+    const session = await neonSignUpWithPassword(body.email.trim().toLowerCase(), body.password);
+    await ensureUserWallet(session.user.id, session.user.email);
+    sendSuccess(res, session, 201);
+  } catch (err) {
+    const raw = err instanceof Error ? err.message : "Falha no registo.";
+    if (isLikelyEmailConflictMessage(raw)) {
+      sendError(
+        res,
+        409,
+        "Este e-mail já está associado a uma conta. Use «Entrar» ou a mesma forma de registo de sempre.",
+      );
+      return;
+    }
+    sendError(res, 400, raw);
   }
-  const identities = data.user?.identities;
-  if (data.user && Array.isArray(identities) && identities.length === 0) {
-    sendError(
-      res,
-      409,
-      "Este e-mail já está associado a uma conta. Use «Entrar» ou a mesma forma de registo de sempre.",
-    );
-    return;
-  }
-  if (!data.session) {
-    sendSuccess(
-      res,
-      {
-        session: null,
-        user: data.user
-          ? { id: data.user.id, email: data.user.email ?? undefined }
-          : null,
-        message:
-          "Conta criada. Se o projeto exigir confirmação por e-mail, verifique a caixa de entrada antes de entrar.",
-      },
-      201,
-    );
-    return;
-  }
-  const s = data.session;
-  sendSuccess(
-    res,
-    {
-      access_token: s.access_token,
-      refresh_token: s.refresh_token,
-      expires_at: s.expires_at,
-      user: { id: s.user.id, email: s.user.email ?? undefined },
-    },
-    201,
-  );
 }
 
 export async function authRefresh(req: Request, res: Response): Promise<void> {
   const body = req.validatedBody as { refresh_token: string };
-  const { data, error } = await supabaseAnon.auth.refreshSession({
-    refresh_token: body.refresh_token,
-  });
-  if (error || !data.session) {
-    sendError(res, 401, error?.message ?? "Refresh token inválido ou expirado.");
-    return;
+  try {
+    const session = await neonRefreshAccessToken(body.refresh_token);
+    sendSuccess(res, session);
+  } catch (err) {
+    sendError(res, 401, err instanceof Error ? err.message : "Refresh token inválido ou expirado.");
   }
-  const s = data.session;
-  sendSuccess(res, {
-    access_token: s.access_token,
-    refresh_token: s.refresh_token,
-    expires_at: s.expires_at,
-    user: { id: s.user.id, email: s.user.email ?? undefined },
-  });
 }
 
 export async function authMe(req: Request, res: Response): Promise<void> {
   sendSuccess(res, { user: req.user });
 }
 
+/**
+ * Inicia Google OAuth via Neon Auth.
+ * callbackURL = front `/auth/callback` (Neon Auth define a sessão no domínio auth;
+ * o front troca por JWT via `NEXT_PUBLIC_NEON_AUTH_URL`).
+ */
 export async function authOAuthGoogleStart(req: Request, res: Response): Promise<void> {
   const nextUrl = sanitizeOAuthFrontendRedirect(req.query.redirect_to);
-  const apiBase = resolvePublicApiUrl(req);
-  const callbackUrl = `${apiBase}/api/v1/auth/oauth/callback`;
 
   res.cookie(OAUTH_FRONTEND_COOKIE, nextUrl, {
     httpOnly: true,
@@ -165,26 +132,20 @@ export async function authOAuthGoogleStart(req: Request, res: Response): Promise
     path: "/",
   });
 
-  const supabase = createSupabaseServerClient(req, res);
-  const { data, error } = await supabase.auth.signInWithOAuth({
-    provider: "google",
-    options: {
-      redirectTo: callbackUrl,
-      scopes: "email profile openid",
-      queryParams: { prompt: "select_account" },
-    },
-  });
-
-  if (error || !data.url) {
-    const rawMsg = error?.message ?? "Não foi possível iniciar o login com Google.";
+  try {
+    const url = await neonStartGoogleOAuth(nextUrl);
+    res.redirect(302, url);
+  } catch (err) {
+    const rawMsg = err instanceof Error ? err.message : "Não foi possível iniciar o login com Google.";
     const safeMsg = normalizeOAuthErrorMessage(rawMsg);
     res.redirect(302, buildFrontendRedirectWithError(nextUrl, safeMsg));
-    return;
   }
-
-  res.redirect(302, data.url);
 }
 
+/**
+ * Compat: se o Neon Auth redirecionar para a API (legado), reenvia para o front.
+ * O fluxo preferido usa callbackURL = front `/auth/callback`.
+ */
 export async function authOAuthCallback(req: Request, res: Response): Promise<void> {
   const errDesc = req.query.error_description ?? req.query.error;
   const frontend =
@@ -201,30 +162,21 @@ export async function authOAuthCallback(req: Request, res: Response): Promise<vo
     return;
   }
 
-  const code = req.query.code;
-  if (typeof code !== "string" || !code) {
-    res.redirect(302, buildFrontendRedirectWithError(frontend, "Código OAuth em falta. Volte a tentar."));
-    return;
+  // Sessão fica no domínio Neon Auth; o front conclui com createAuthClient + token().
+  const dest = new URL(frontend);
+  for (const [k, v] of Object.entries(req.query)) {
+    if (typeof v === "string" && k !== "error" && k !== "error_description") {
+      dest.searchParams.set(k, v);
+    }
   }
+  res.redirect(302, dest.toString());
+}
 
-  const supabase = createSupabaseServerClient(req, res);
-  const { data, error } = await supabase.auth.exchangeCodeForSession(code);
-
-  if (error || !data.session) {
-    const rawMsg = error?.message ?? "Falha ao concluir o login com Google.";
-    const safeMsg = normalizeOAuthErrorMessage(rawMsg);
-    res.redirect(302, buildFrontendRedirectWithError(frontend, safeMsg));
-    return;
-  }
-
-  const s = data.session;
-  await ensureUserWallet(s.user.id, s.user.email ?? undefined);
-
-  const hash = new URLSearchParams({
-    access_token: s.access_token,
-    refresh_token: s.refresh_token,
-    expires_at: String(s.expires_at ?? ""),
-  }).toString();
-
-  res.redirect(302, `${frontend}#${hash}`);
+/** Exposto para health/docs. */
+export function authPublicConfig(_req: Request, res: Response): void {
+  sendSuccess(res, {
+    provider: "neon_auth",
+    neonAuthUrl: env.neonAuthUrl,
+    apiBaseHint: resolvePublicApiUrl(_req),
+  });
 }

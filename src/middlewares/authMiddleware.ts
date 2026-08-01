@@ -1,6 +1,6 @@
 import type { NextFunction, Request, Response } from "express";
 
-import { supabaseAnon } from "../lib/supabaseAnonClient";
+import { verifyNeonAccessToken } from "../lib/neonAuth";
 
 function parseBearerToken(req: Request): string | null {
   const raw = req.headers.authorization;
@@ -10,7 +10,7 @@ function parseBearerToken(req: Request): string | null {
 }
 
 /**
- * Exige `Authorization: Bearer <access_token>` válido (Supabase Auth).
+ * Exige `Authorization: Bearer <jwt>` válido (Neon Auth / JWKS).
  * Preenche `req.user` com o id (UUID) alinhado ao `User.id` do Prisma.
  */
 export async function authMiddleware(req: Request, res: Response, next: NextFunction) {
@@ -24,9 +24,10 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
     return;
   }
 
-  const { data, error } = await supabaseAnon.auth.getUser(token);
+  const payload = await verifyNeonAccessToken(token);
+  const id = typeof payload?.sub === "string" ? payload.sub : typeof payload?.id === "string" ? payload.id : null;
 
-  if (error || !data.user) {
+  if (!payload || !id) {
     res.status(401).json({
       error: "Unauthorized",
       message: "Token inválido ou expirado.",
@@ -35,8 +36,8 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
   }
 
   req.user = {
-    id: data.user.id,
-    email: data.user.email ?? undefined,
+    id,
+    email: typeof payload.email === "string" ? payload.email : undefined,
   };
 
   next();

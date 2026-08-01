@@ -36,8 +36,8 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           DIRECT_URL: ${{ secrets.DIRECT_URL }}
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          NEON_AUTH_URL: ${{ secrets.NEON_AUTH_URL }}
+          NEON_AUTH_TRUSTED_ORIGIN: ${{ secrets.NEON_AUTH_TRUSTED_ORIGIN }}
           ALPHA_VANTAGE_API_KEY: ${{ secrets.ALPHA_VANTAGE_API_KEY }}
           FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
           NEWS_API_KEY: ${{ secrets.NEWS_API_KEY }}

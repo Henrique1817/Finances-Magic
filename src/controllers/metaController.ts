@@ -38,7 +38,7 @@ export function getApiV1Root(_req: Request, res: Response): void {
         oauthCallback: {
           method: "GET",
           path: `/api/${API_ROUTE_VERSION}/auth/oauth/callback`,
-          note: "Callback Supabase; redireciona ao front com tokens no fragmento.",
+          note: "OAuth Google via Neon Auth; callback no front /auth/callback.",
         },
       },
       assets: {

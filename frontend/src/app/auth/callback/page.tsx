@@ -4,7 +4,9 @@ import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 
+import { getNeonAuthUrl } from "@/config/neonAuth";
 import { setStoredSession } from "@/lib/authSession";
+import { NEON_BROWSER_REFRESH_TOKEN } from "@/lib/neonBrowserSession";
 
 function parseHashParams(hash: string): Record<string, string> {
   const raw = hash.startsWith("#") ? hash.slice(1) : hash;
@@ -16,6 +18,35 @@ function parseHashParams(hash: string): Record<string, string> {
   return out;
 }
 
+async function exchangeNeonBrowserSession(): Promise<{
+  access_token: string;
+  expires_at?: number;
+} | null> {
+  const base = getNeonAuthUrl();
+  if (!base) return null;
+
+  const tokenRes = await fetch(`${base}/token`, {
+    method: "GET",
+    credentials: "include",
+    headers: { Origin: window.location.origin },
+  });
+  if (!tokenRes.ok) return null;
+  const data = (await tokenRes.json()) as { token?: string };
+  if (!data.token) return null;
+
+  let expires_at: number | undefined;
+  try {
+    const payload = JSON.parse(atob(data.token.split(".")[1]!.replace(/-/g, "+").replace(/_/g, "/"))) as {
+      exp?: number;
+    };
+    if (typeof payload.exp === "number") expires_at = payload.exp;
+  } catch {
+    /* ignore */
+  }
+
+  return { access_token: data.token, expires_at };
+}
+
 function AuthCallbackInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -23,35 +54,64 @@ function AuthCallbackInner() {
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
-    const qErr =
-      searchParams.get("error_description") ?? searchParams.get("error");
-    if (qErr) {
+    let cancelled = false;
+
+    async function run() {
+      const qErr =
+        searchParams.get("error_description") ?? searchParams.get("error");
+      if (qErr) {
+        if (cancelled) return;
+        setFailed(true);
+        setMessage(decodeURIComponent(String(qErr).replace(/\+/g, " ")));
+        return;
+      }
+
+      if (typeof window === "undefined") return;
+
+      const fromHash = parseHashParams(window.location.hash);
+      const access = fromHash.access_token;
+      const refresh = fromHash.refresh_token;
+      const expiresAt = fromHash.expires_at;
+
+      if (access && refresh) {
+        setStoredSession({
+          access_token: access,
+          refresh_token: refresh,
+          expires_at: expiresAt ? Number(expiresAt) : undefined,
+        });
+        window.history.replaceState(null, "", window.location.pathname + window.location.search);
+        router.replace("/");
+        router.refresh();
+        return;
+      }
+
+      // Neon Auth OAuth: sessão em cookie no domínio auth → JWT via /token
+      try {
+        const exchanged = await exchangeNeonBrowserSession();
+        if (exchanged) {
+          setStoredSession({
+            access_token: exchanged.access_token,
+            refresh_token: NEON_BROWSER_REFRESH_TOKEN,
+            expires_at: exchanged.expires_at,
+          });
+          window.history.replaceState(null, "", window.location.pathname + window.location.search);
+          router.replace("/");
+          router.refresh();
+          return;
+        }
+      } catch {
+        /* fall through */
+      }
+
+      if (cancelled) return;
       setFailed(true);
-      setMessage(decodeURIComponent(String(qErr).replace(/\+/g, " ")));
-      return;
+      setMessage("Não foi possível concluir o login. Volte a tentar.");
     }
 
-    if (typeof window === "undefined") return;
-
-    const fromHash = parseHashParams(window.location.hash);
-    const access = fromHash.access_token;
-    const refresh = fromHash.refresh_token;
-    const expiresAt = fromHash.expires_at;
-
-    if (access && refresh) {
-      setStoredSession({
-        access_token: access,
-        refresh_token: refresh,
-        expires_at: expiresAt ? Number(expiresAt) : undefined,
-      });
-      window.history.replaceState(null, "", window.location.pathname + window.location.search);
-      router.replace("/");
-      router.refresh();
-      return;
-    }
-
-    setFailed(true);
-    setMessage("Não foi possível concluir o login. Volte a tentar.");
+    void run();
+    return () => {
+      cancelled = true;
+    };
   }, [router, searchParams]);
 
   useEffect(() => {

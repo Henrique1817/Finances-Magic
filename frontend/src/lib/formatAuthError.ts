@@ -1,4 +1,4 @@
-/** Traduz mensagens comuns devolvidas pela API de auth (Supabase no servidor). */
+/** Traduz mensagens comuns devolvidas pela API de auth (Neon Auth no servidor). */
 export function formatApiAuthMessage(message: string): string {
   const msg = message ?? "";
   const lower = msg.toLowerCase();
