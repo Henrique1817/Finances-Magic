@@ -1,5 +1,5 @@
 import { buildFactorCatalogSummaryForPrompt, loadFactorCatalog } from "./dataFactorCatalog";
-import { geminiBuildNarrative, geminiParseFactors, type NarrativePayload } from "./geminiScenarioService";
+import { openaiBuildNarrative, openaiParseFactors, type NarrativePayload } from "./openaiScenarioService";
 import { runQuantScenario } from "./quantScenarioEngine";
 import { buildScenarioContext, formatScenarioContextForPrompt } from "./scenarioContextBuilder";
 import { createScenarioRecord, scenarioTitleFromMessage } from "../scenarioService";
@@ -328,7 +328,7 @@ export async function generateAndPersistAiScenario(args: {
   const scenarioContext = await buildScenarioContext(args.userId);
   const contextBlock = formatScenarioContextForPrompt(scenarioContext);
 
-  const parsed = await geminiParseFactors(args.message, catalogSummary, contextBlock);
+  const parsed = await openaiParseFactors(args.message, catalogSummary, contextBlock);
   if (!parsed.ok && parsed.code === "NO_API_KEY") {
     return { ok: false, status: 503, message: parsed.message };
   }
@@ -361,7 +361,7 @@ export async function generateAndPersistAiScenario(args: {
   );
 
   const quant = await runQuantScenario(scenarioContext.walletLines, quantInputs);
-  const narrative = await geminiBuildNarrative({
+  const narrative = await openaiBuildNarrative({
     userMessage: args.message,
     catalogSummary,
     scenarioContext: contextBlock,

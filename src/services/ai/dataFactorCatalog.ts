@@ -81,7 +81,7 @@ export async function loadFactorCatalog(): Promise<FactorCatalog> {
 }
 
 /**
- * Resumo textual do catálogo para injetar no prompt (Gemini).
+ * Resumo textual do catálogo para injetar no prompt (OpenAI).
  */
 export function buildFactorCatalogSummaryForPrompt(catalog: FactorCatalog): string {
   const lines: string[] = [

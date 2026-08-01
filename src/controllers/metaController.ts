@@ -96,7 +96,7 @@ export function getApiV1Root(_req: Request, res: Response): void {
           path: `/api/${API_ROUTE_VERSION}/ai/scenario`,
           auth: "Bearer obrigatório",
           body: { message: "string (cenário em linguagem natural)" },
-          note: "Persiste cenário; resposta inclui scenarioId e title. GEMINI_API_KEY; limite 5 req/min por IP.",
+          note: "Persiste cenário; resposta inclui scenarioId e title. OPENAI_API_KEY; limite 5 req/min por IP.",
         },
       },
       scenarios: {

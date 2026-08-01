@@ -1,6 +1,5 @@
 import { Prisma, type AssetType } from "@prisma/client";
 import axios, { isAxiosError } from "axios";
-import { GoogleGenerativeAI } from "@google/generative-ai";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { resolve } from "node:path";
@@ -17,6 +16,7 @@ import { runWithIngestionRunLog } from "../../lib/ingestionRun";
 import { logger } from "../../lib/logger";
 import { prisma } from "../../lib/prisma";
 import { sleep } from "../../lib/sleep";
+import { openAiChatJson, reserveDailyParamAgentOpenAiCall } from "../ai/openaiChat";
 import {
   canUseProvider,
   markProvider429,
@@ -41,8 +41,7 @@ type CandidateAsset = {
   category: string;
   type: AssetType;
 };
-type CountRow = { requests: number };
-type GeminiCandidateAsset = CandidateAsset & {
+type AiCandidateAsset = CandidateAsset & {
   confidence?: number;
   reason?: string;
 };
@@ -93,7 +92,7 @@ function dedupeMonitoredAssets(items: MonitoredAsset[]): MonitoredAsset[] {
   return [...bySymbol.values()];
 }
 
-function normalizeCandidateAsset(raw: GeminiCandidateAsset): CandidateAsset | null {
+function normalizeCandidateAsset(raw: AiCandidateAsset): CandidateAsset | null {
   const symbol = String(raw.symbol ?? "")
     .trim()
     .toUpperCase()
@@ -129,46 +128,17 @@ function safeParseJsonObject(rawText: string): unknown {
   }
 }
 
-function utcDayStartDate(): Date {
-  const d = new Date();
-  d.setUTCHours(0, 0, 0, 0);
-  return d;
-}
-
-async function reserveDailyParamAgentGeminiCall(modelName: string): Promise<boolean> {
-  const provider = `gemini-daily-param-agent:${modelName}`;
-  const dayStart = utcDayStartDate();
-  const cap = env.dailyParamAgentGeminiDailyCap;
-  const rows = await prisma.$queryRaw<CountRow[]>`
-    SELECT "requests"
-    FROM "api_quota_counters"
-    WHERE "provider" = ${provider}
-      AND "window" = 'day'
-      AND "windowStart" = ${dayStart}
-    LIMIT 1
-  `;
-  const used = rows[0]?.requests ?? 0;
-  if (used >= cap) return false;
-  await prisma.$executeRaw`
-    INSERT INTO "api_quota_counters" ("id","provider","window","windowStart","requests","updatedAt","createdAt")
-    VALUES (gen_random_uuid()::text, ${provider}, 'day', ${dayStart}, 1, NOW(), NOW())
-    ON CONFLICT ("provider","window","windowStart")
-    DO UPDATE SET "requests" = "api_quota_counters"."requests" + 1, "updatedAt" = NOW()
-  `;
-  return true;
-}
-
-async function discoverAssetsFromNewsWithGemini(args: {
+async function discoverAssetsFromNewsWithOpenAi(args: {
   existingSymbols: Set<string>;
   maxNew: number;
   lookback: number;
 }): Promise<MonitoredAsset[]> {
-  if (!env.geminiApiKey || !env.dailyParamAgentUseGemini) return [];
-  const reserved = await reserveDailyParamAgentGeminiCall(env.dailyParamAgentGeminiModel);
+  if (!env.openaiApiKey || !env.dailyParamAgentUseOpenAi) return [];
+  const reserved = await reserveDailyParamAgentOpenAiCall(env.dailyParamAgentOpenAiModel);
   if (!reserved) {
     log.info(
-      { cap: env.dailyParamAgentGeminiDailyCap, model: env.dailyParamAgentGeminiModel },
-      "Cap diário do agente Gemini atingido; descoberta IA ignorada",
+      { cap: env.dailyParamAgentOpenAiDailyCap, model: env.dailyParamAgentOpenAiModel },
+      "Cap diário do agente OpenAI atingido; descoberta IA ignorada",
     );
     return [];
   }
@@ -200,14 +170,11 @@ async function discoverAssetsFromNewsWithGemini(args: {
     ...titles.map((t) => `- ${t}`),
   ].join("\n");
 
-  const gen = new GoogleGenerativeAI(env.geminiApiKey);
-  const model = gen.getGenerativeModel({
-    model: env.dailyParamAgentGeminiModel,
-    generationConfig: { responseMimeType: "application/json" },
+  const result = await openAiChatJson({
+    prompt,
+    preferredModels: [env.dailyParamAgentOpenAiModel],
   });
-  const result = await model.generateContent(prompt);
-  const raw = result.response.text();
-  const parsed = safeParseJsonObject(raw) as { candidates?: GeminiCandidateAsset[] };
+  const parsed = safeParseJsonObject(result.text) as { candidates?: AiCandidateAsset[] };
   const candidates = Array.isArray(parsed?.candidates) ? parsed.candidates : [];
 
   const out: MonitoredAsset[] = [];
@@ -686,7 +653,7 @@ export async function runMarketDataIngestion(): Promise<void> {
     let discoveredAssets: MonitoredAsset[] = [];
     if (env.dailyParamAgentEnabled && "newsRecord" in prisma) {
       try {
-        discoveredAssets = await discoverAssetsFromNewsWithGemini({
+        discoveredAssets = await discoverAssetsFromNewsWithOpenAi({
           existingSymbols: configuredSymbols,
           maxNew: env.dailyParamAgentMaxNewAssetsPerRun,
           lookback: env.dailyParamAgentNewsLookback,
@@ -694,7 +661,7 @@ export async function runMarketDataIngestion(): Promise<void> {
       } catch (err) {
         log.warn(
           { err },
-          "Agente Gemini de descoberta falhou; aplicando fallback heurístico",
+          "Agente OpenAI de descoberta falhou; aplicando fallback heurístico",
         );
       }
       if (discoveredAssets.length === 0) {

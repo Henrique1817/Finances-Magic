@@ -29,24 +29,26 @@ export const env = {
   yfinancePythonExecutable: process.env.YFINANCE_PYTHON_EXECUTABLE?.trim() || "python",
   fredApiKey: optional("FRED_API_KEY"),
   newsApiKey: optional("NEWS_API_KEY"),
-  /** Google Gemini — cenários IA (opcional; sem chave o endpoint retorna erro claro). */
-  geminiApiKey: optional("GEMINI_API_KEY"),
   /**
-   * OpenAI — transcrição por voz (Whisper) para navegadores sem Web Speech API
-   * (ex.: Firefox, Safari/iOS). Opcional; sem chave o front usa só reconhecimento nativo.
+   * OpenAI — cenários IA + Whisper (opcional).
+   * Sem chave: POST /api/v1/ai/scenario responde 503; front usa só speech nativo.
    */
   openaiApiKey: optional("OPENAI_API_KEY"),
   openaiWhisperModel: process.env.OPENAI_WHISPER_MODEL?.trim() || "whisper-1",
-  geminiModel: process.env.GEMINI_MODEL?.trim() || "gemini-2.5-flash-lite",
-  geminiModelFallbacks: parseCommaList(process.env.GEMINI_MODEL_FALLBACKS),
   /**
-   * Cap diário por modelo Gemini para manter custo zero em free tier.
-   * Formato: "gemini-2.5-flash-lite:200,gemini-2.5-flash:120,gemini-2.5-pro:60"
+   * Modelo de chat para cenários / descoberta de ativos.
+   * Padrão gpt-4o-mini: barato e suficiente para JSON estruturado + raciocínio financeiro.
    */
-  geminiModelDailyCaps: parseGeminiDailyCaps(process.env.GEMINI_MODEL_DAILY_CAPS),
-  /** Modo teste: evita chamadas ao Gemini e gera resposta simulada localmente. */
-  geminiUseMock: process.env.GEMINI_USE_MOCK === "true",
-  /** Geração automática de cenários para ampliar dataset supervisionado (consome cota Gemini). */
+  openaiModel: process.env.OPENAI_MODEL?.trim() || "gpt-4o-mini",
+  openaiModelFallbacks: parseCommaList(process.env.OPENAI_MODEL_FALLBACKS),
+  /**
+   * Cap diário por modelo OpenAI (controle de custo).
+   * Formato: "gpt-4o-mini:200,gpt-4.1-mini:80"
+   */
+  openaiModelDailyCaps: parseOpenAiDailyCaps(process.env.OPENAI_MODEL_DAILY_CAPS),
+  /** Modo teste: evita chamadas à OpenAI e gera resposta simulada localmente. */
+  openaiUseMock: process.env.OPENAI_USE_MOCK === "true" || process.env.GEMINI_USE_MOCK === "true",
+  /** Geração automática de cenários para ampliar dataset supervisionado (consome cota OpenAI). */
   aiAutoTrainingEnabled: process.env.AI_AUTO_TRAINING_ENABLED === "true",
   /** Limite diário de cenários automáticos (proteção extra de custo/cota). */
   aiAutoTrainingMaxScenariosPerDay: parsePositiveInt(process.env.AI_AUTO_TRAINING_MAX_SCENARIOS_PER_DAY, 12),
@@ -68,18 +70,25 @@ export const env = {
    * Usa deduplicação por símbolo e respeita limite por execução.
    */
   dailyParamAgentEnabled: process.env.DAILY_PARAM_AGENT_ENABLED !== "false",
-  /** Se true, usa Gemini para sugerir novos ativos a partir de notícias. */
-  dailyParamAgentUseGemini: process.env.DAILY_PARAM_AGENT_USE_GEMINI !== "false",
+  /** Se true, usa OpenAI para sugerir novos ativos a partir de notícias. */
+  dailyParamAgentUseOpenAi:
+    process.env.DAILY_PARAM_AGENT_USE_OPENAI !== "false" &&
+    process.env.DAILY_PARAM_AGENT_USE_GEMINI !== "false",
   dailyParamAgentMaxNewAssetsPerRun: parsePositiveInt(
     process.env.DAILY_PARAM_AGENT_MAX_NEW_ASSETS_PER_RUN,
     12,
   ),
   dailyParamAgentNewsLookback: parsePositiveInt(process.env.DAILY_PARAM_AGENT_NEWS_LOOKBACK, 200),
-  /** Máximo de chamadas Gemini por dia para descoberta automática de parâmetros. */
-  dailyParamAgentGeminiDailyCap: parsePositiveInt(process.env.DAILY_PARAM_AGENT_GEMINI_DAILY_CAP, 3),
-  /** Modelo Gemini dedicado ao agente diário (opcional). */
-  dailyParamAgentGeminiModel:
-    process.env.DAILY_PARAM_AGENT_GEMINI_MODEL?.trim() || process.env.GEMINI_MODEL?.trim() || "gemini-2.5-flash-lite",
+  /** Máximo de chamadas OpenAI por dia para descoberta automática de parâmetros. */
+  dailyParamAgentOpenAiDailyCap: parsePositiveInt(
+    process.env.DAILY_PARAM_AGENT_OPENAI_DAILY_CAP ?? process.env.DAILY_PARAM_AGENT_GEMINI_DAILY_CAP,
+    3,
+  ),
+  /** Modelo OpenAI dedicado ao agente diário (opcional). */
+  dailyParamAgentOpenAiModel:
+    process.env.DAILY_PARAM_AGENT_OPENAI_MODEL?.trim() ||
+    process.env.OPENAI_MODEL?.trim() ||
+    "gpt-4o-mini",
   /**
    * Cotações intradiárias (Yahoo 30m) só para ativos ligados a carteiras (`wallet_assets.asset_id`).
    * "false" desliga o cron dedicado (ingestão diária global continua igual).
@@ -145,11 +154,10 @@ function parseOriginsList(raw: string | undefined): string[] {
   return expandLocalhostAliases(listed);
 }
 
-function parseGeminiDailyCaps(raw: string | undefined): Record<string, number> {
+function parseOpenAiDailyCaps(raw: string | undefined): Record<string, number> {
   const defaults: Record<string, number> = {
-    "gemini-2.5-flash-lite": 200,
-    "gemini-2.5-flash": 120,
-    "gemini-2.5-pro": 60,
+    "gpt-4o-mini": 200,
+    "gpt-4.1-mini": 80,
   };
   if (!raw || raw.trim() === "") return defaults;
   const out: Record<string, number> = { ...defaults };
