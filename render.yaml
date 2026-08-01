@@ -12,7 +12,8 @@ services:
     region: oregon
     branch: master
     rootDir: .
-    buildCommand: npm ci && npx prisma generate --config prisma.config.ts && npm run build
+    # --include=dev: NODE_ENV=production faria npm omitir prisma/typescript (devDependencies)
+    buildCommand: npm ci --include=dev && npx prisma generate --config prisma.config.ts && npm run build
     startCommand: npx prisma migrate deploy --config prisma.config.ts && npm start
     healthCheckPath: /health
     autoDeploy: true
